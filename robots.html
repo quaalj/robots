@@ -1,0 +1,1117 @@
+<html>
+
+<style>
+div.sidebar {
+	position: absolute;
+	left: 524px;
+	top: 10px;
+}
+div.player_div {
+	min-width: 150px;
+	padding: 20px;
+	border:1px solid black;
+}
+</style>
+<body>
+
+<span style="display:none;">
+   <img id="moon" src="moon.png">
+   <img id="star" src="star.png">
+   <img id="gear" src="gear.png">
+   <img id="saturn" src="saturn.png">
+   <img id="warp" src="warp.png">
+   <img id="red" src="red.png">
+   <img id="blue" src="blue.png">
+   <img id="green" src="green.png">
+   <img id="yellow" src="yellow.png">
+   <img id="grey" src="grey.png">
+</span>
+
+<div id="player_list" class="sidebar"></div>
+
+<canvas id="MainCanvas" width="512" height="512" style="border:1px solid #c3c3c3;">
+</canvas>
+
+<br>
+
+<span id="game_info"></span>
+<br>
+
+<span id="timer" class="bid solve"></span>  <span id="num_moves" class="solve"></span>
+<br>
+
+<span class="playing bid">
+	<input id="bid_input" type="text" class="playing bid" ></input>
+	<button id="bid" class="playing bid">Bid</button>
+	<span id="curr_bid" class="playing bid solve"></span>
+	<button id="gentleman" class="playing bid">Skip Round</button>
+	<br>
+</span>
+
+<span class="playing solving">
+	<span id="turn_indicator" class="playing solving">Your Turn!<br></span>
+	<button id="revert" class="playing solving">Revert</button>
+	<button id="undo" class="playing solving">Undo</button>
+	<button id="redo" class="playing solving">Redo</button>
+	<button id="skip" class="playing solving">Give Up</button>
+	<br>
+</span>
+
+<span class="playing free">
+	<!-- <button id="demo" class="playing free">View Optimal</button> -->
+	<button id="reset_robots" class="playing free">Reset Robots</button>
+	<button id="next" class="playing free">Next Round</button>
+	<br>
+</span>
+
+<!-- 
+<span class="playing demo">
+	<button id="skip_demo" class="player demo">Skip Demo</button>
+	<br>
+</span>
+-->
+
+<span class="playing">
+	Name: <span id="name"></span>
+	<br>
+	Score: <span id="score"></span>
+	<br>
+</span>
+
+<input id="name_input" type="text" class="" ></input>
+<button id="join_game" class="observing">Join</button>
+<button id="rename_button" class="playing">Rename</button>
+<br>
+
+<button id="leave_game" class="playing">Leave</button>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script type="module" src="/util.js"></script>
+<script type="module" src="/robots.js"></script>
+
+<script type="module">
+
+import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } from "./util.js";
+import { Game, State, Color, Symbol, RobotMove, Goal } from "./robots.js";
+
+const TILE_SIZE = 32;
+const ROBOT_TWEEN_SPEED = 32.0;
+
+function getSymbolImage(symbol) {
+	if (symbol == Symbol.Star) {
+		return document.getElementById('star');
+	} else if (symbol == Symbol.Moon) {
+		return document.getElementById('moon');
+	} else if (symbol == Symbol.Gear) {
+		return document.getElementById('gear');
+	} else if (symbol == Symbol.Saturn) {
+		return document.getElementById('saturn');
+	} else if (symbol == Symbol.Warp) {
+		return document.getElementById('warp');
+	} else {
+		return null;
+	}
+}
+
+function getRobotImage(color) {
+	if (color == Color.Yellow) {
+		return document.getElementById('yellow');
+	} else if (color == Color.Green) {
+		return document.getElementById('green');
+	} else if (color == Color.Red) {
+		return document.getElementById('red');
+	} else if (color == Color.Blue) {
+		return document.getElementById('blue');
+	} else {
+		return null;
+	}
+}
+
+function getColorValue(color) {
+	if (color == Color.Yellow) {
+		return "#FFFF00";
+	} else if (color == Color.Green) {
+		return "#00FF00";
+	} else if (color == Color.Red) {
+		return "#FF0000";
+	} else if (color == Color.Blue) {
+		return "#0000FF";
+	} else {
+		return "#FFFFFF";
+	}
+}
+
+function drawGoal(goal, canvas, offset) {
+	let ctx = canvas.getContext("2d");
+	ctx.strokeStyle = "#000000";
+	ctx.lineWidth = 2;
+	ctx.fillStyle = getColorValue(goal.color);
+	ctx.beginPath();
+	ctx.arc(offset.x + 16, offset.y + 16, 13, 0, 2 * Math.PI);
+	ctx.fill();
+	ctx.stroke();
+	let image = getSymbolImage(goal.symbol);
+	if (image == null) {
+		console.log("Here");
+	}
+	ctx.drawImage(image, offset.x, offset.y);
+}
+
+function drawStartPoint(color, canvas, offset) {
+	let ctx = canvas.getContext("2d");
+	ctx.strokeStyle = getColorValue(color);
+	ctx.lineWidth = 5;
+	ctx.globalAlpha = 0.3;
+	let current = game.originalRobotConfig[color];
+	let currentDraw = current.mul(TILE_SIZE).add(offset).add(new Point(TILE_SIZE / 2, TILE_SIZE / 2));
+	let radius = TILE_SIZE / 2.15;
+	ctx.beginPath();
+	ctx.arc(currentDraw.x, currentDraw.y, radius, 0, 2 * Math.PI);
+	ctx.stroke();
+	ctx.globalAlpha = 1.0;
+}
+
+function drawBoard(board, canvas, offset = new Point(0, 0)) {
+	let ctx = canvas.getContext("2d");
+
+	for (let y = 0; y < board.size.y; ++y) {
+		for (let x = 0; x < board.size.x; ++x) {
+			let cell = board.getCell(x, y);
+			let cellPos = (new Point(x * TILE_SIZE, y * TILE_SIZE)).add(offset);
+			ctx.lineWidth = 1;
+			if (cell.fullyFenced()) {
+				ctx.fillStyle = "#c3c3c3";
+				ctx.fillRect(cellPos.x, cellPos.y, TILE_SIZE, TILE_SIZE);
+			} else {
+				ctx.strokeStyle = "#a0a0a0";
+				ctx.strokeRect(cellPos.x, cellPos.y, TILE_SIZE, TILE_SIZE);
+			}
+		}
+	}
+	
+	for (let y = 0; y < board.size.y; ++y) {
+		for (let x = 0; x < board.size.x; ++x) {
+			let cell = board.getCell(x, y);
+			let cellPos = (new Point(x * TILE_SIZE, y * TILE_SIZE)).add(offset);
+			let goal = cell.getGoal();
+			
+			if (goal != null) {
+				drawGoal(goal, canvas, cellPos);
+			}
+		}
+	}
+	
+	if (game.originalRobotConfig != null) {
+		for (let i = 0; i < game.originalRobotConfig.length; ++i) {
+			drawStartPoint(i, canvas, offset);
+		}
+	}
+	
+	for (let y = 0; y < board.size.y; ++y) {
+		for (let x = 0; x < board.size.x; ++x) {
+			let cell = board.getCell(x, y);
+			let cellPos = (new Point(x * TILE_SIZE, y * TILE_SIZE)).add(offset);
+			Direction.allValues.forEach(function(i) {
+				if (cell.getFence(i)) {
+					let center = cellPos.add(TILE_SIZE / 2, TILE_SIZE / 2);
+					
+					let dir = Point.fromDirection(i).mul(TILE_SIZE / 2);
+					let left = Point.fromDirection(Direction.rotate90(i, -1)).mul(TILE_SIZE / 2 + 2);
+					let right = Point.fromDirection(Direction.rotate90(i, 1)).mul(TILE_SIZE / 2 + 2);
+					
+					ctx.strokeStyle = "#000000";
+					ctx.lineWidth = 4;
+					ctx.beginPath();
+					let startPos = center.add(dir).add(left);
+					let endPos = startPos.add(right.mul(2));
+					ctx.moveTo(startPos.x, startPos.y);
+					ctx.lineTo(endPos.x, endPos.y);
+					ctx.stroke();
+				}
+			});
+		}
+	}
+}
+
+class ActiveSelection {
+	constructor(game) {
+		this.game = game;
+		this.selectedRobot = null;
+		Object.defineProperty(this, 'directionMoves', { 'value': new Array(4) });
+	}
+	
+	setRobot(robotId) {
+		this.selectedRobot = robotId;
+		if (this.hasSelection()) {
+			for (let dir = 0; dir < 4; ++dir) {
+				this.directionMoves[dir] = this.game.board.doMove(this.game.getRobotPositions(), this.selectedRobot, dir);
+			}
+		}
+	}
+	
+	getMoveEndpoint(dir) {
+		return this.directionMoves[dir];
+	}
+	
+	hasSelection() {
+		return this.selectedRobot != null;
+	}
+	
+	clearSelection() {
+		this.selectedRobot = null;
+	}
+}
+
+class Robot {
+	constructor(game, position, color) {
+		Object.defineProperty(this, 'color', { 'value': color });
+		this.game = game;
+		this.positionQueue = [position]
+		this.tweenAlpha = 0.0;
+	}
+	
+	moveTo(cell) {
+		if (this.positionQueue.length > 0 && this.positionQueue[this.positionQueue.length - 1].equals(cell)) {
+			return;
+		}
+		this.positionQueue.push(cell);
+		this.game.robots[this.color] = cell;
+	}
+	
+	warpTo(cell) {
+		this.positionQueue = [cell];
+		this.game.robots[this.color] = cell;
+		this.tweenAlpha = 0.0;
+	}
+	
+	getCell() {
+		return this.positionQueue[this.positionQueue.length - 1];
+	}
+	
+	update(deltaTime) {
+		if (this.positionQueue.length > 1) {
+			let dist = this.positionQueue[0].lInfDist(this.positionQueue[1]);
+			this.tweenAlpha = Math.min(this.tweenAlpha + (deltaTime * ROBOT_TWEEN_SPEED) / dist, 1.0);
+			
+			if (this.tweenAlpha >= 1.0) {
+				this.positionQueue.shift();
+				this.tweenAlpha = 0.0;
+			}
+		}
+	}
+	
+	getDrawPosition(offset = new Point(0, 0)) {
+		let basePosition;
+		if (this.positionQueue.length == 1) {
+			basePosition = this.positionQueue[0].mul(TILE_SIZE);
+		} else {
+			basePosition = this.positionQueue[0].mul(TILE_SIZE * (1 - this.tweenAlpha)).add(this.positionQueue[1].mul(TILE_SIZE * this.tweenAlpha));
+		}
+		return basePosition.add(offset);
+	}
+	
+	getImage() {
+		return getRobotImage(this.color);
+	}
+	
+	getColorValue() {
+		return getColorValue(this.color);
+	}
+	
+	draw(canvas, offset = new Point(0, 0)) {
+		let ctx = canvas.getContext("2d");
+		let pos = this.getDrawPosition(offset);
+		ctx.drawImage(this.getImage(), pos.x, pos.y);
+	}
+}
+
+// Globals
+var game = new Game();
+var robots = [];
+
+var selection = new ActiveSelection(game);
+var canvas = document.getElementById("MainCanvas");
+var moveSequence = [];
+var redoStack = [];
+var moveCount = null;
+
+var playerId = null;
+var currentSolvingPlayer = null;
+
+var serverTimeDelta = 0;
+var serverBidStartTime = null;
+
+var socket = null;
+
+function clearCanvas(canvas) {
+	let ctx = canvas.getContext("2d");
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawGame(game, canvas, offset = new Point(0, 0)) {
+	clearCanvas(canvas);
+	drawBoard(game.board, canvas, offset);	
+	for (let i = 0; i < robots.length; ++i) {
+		robots[i].draw(canvas, offset);
+	}
+	
+	if (selection.hasSelection()) {
+		let ctx = canvas.getContext("2d");
+		ctx.fillStyle = robots[selection.selectedRobot].getColorValue();
+		ctx.globalAlpha = 0.3;
+		let current = robots[selection.selectedRobot].getCell();
+		let currentDraw = current.mul(TILE_SIZE).add(offset);
+		ctx.fillRect(currentDraw.x, currentDraw.y, TILE_SIZE, TILE_SIZE);
+	
+		for (let dir = 0; dir < 4; ++dir) {
+			// TODO: will need to cover the entire path (or at least all segments of the path) if we add bumpers
+			let extent = selection.getMoveEndpoint(dir);
+			let current = robots[selection.selectedRobot].getCell();
+			let delta = Point.fromDirection(dir);
+			while (!extent.equals(current)) {
+				current = current.add(delta);
+				currentDraw = current.mul(TILE_SIZE).add(offset);
+				ctx.fillRect(currentDraw.x, currentDraw.y, TILE_SIZE, TILE_SIZE);
+				
+				if (current.x < 0 || current.y < 0 || current.x >= game.board.size.x || current.y >= game.board.size.y) {
+					selection.setRobot(selection.selectedRobot);
+					break;
+				}
+			} 
+		}
+		ctx.globalAlpha = 1.0;
+	}
+	
+	if (game.currentGoal != null) {
+		drawGoal(game.currentGoal, canvas, game.board.size.mul(TILE_SIZE / 2.0).sub(TILE_SIZE / 2.0, TILE_SIZE / 2.0));
+	}
+}
+
+function getMousePos(canvas, event) {
+	let rect = canvas.getBoundingClientRect();
+	return new Point(event.clientX - rect.left, event.clientY - rect.top);
+}
+
+function getCellFromPos(mousePos) {
+	return new Point(intdiv(mousePos.x, TILE_SIZE), intdiv(mousePos.y, TILE_SIZE));
+}
+
+function updateUI() {
+	if (playerId == null) {
+		$('.observing').show();
+	} else {
+		$('.playing').show();
+	}
+
+	let hideStates = State.allValues.filter(s => s != game.state).map(s => "." + State.str(s).toLowerCase());
+	
+	if (!isClientSolving()) {
+		hideStates.push('.solving');
+	}
+	
+	$(hideStates.join(', ')).hide();
+	$('.' + State.str(game.state)).show();
+	
+	if (playerId == null) {
+		$('.playing').hide();
+	} else {
+		$('.observing').hide();
+	}
+
+	let timer = document.getElementById('timer');
+	if (serverBidStartTime != null) {
+		let serverNow = Date.now() + serverTimeDelta;
+		let bidTimeElapsed = serverNow - serverBidStartTime;
+		if (game.state == State.Bid) {
+			let bidTimeLeft = Math.max((game.bidTimeout * 1000) - bidTimeElapsed, 0);
+			timer.textContent = epochDeltaToTime(bidTimeLeft);
+		} else if (game.state == State.Solve) {
+			let bidTimeLeft = Math.max((game.solveTimeout * 1000) - bidTimeElapsed, 0);
+			timer.textContent = epochDeltaToTime(bidTimeLeft);
+		}
+	} else {
+		timer.textContent = "";
+	}
+	
+	let numMoves = document.getElementById('num_moves');
+	if (game.state == State.Solve && numMoves != null && moveCount != null) {
+		numMoves.textContent = moveCount.toString();
+	}
+	
+	if (playerId != null) {	
+		document.getElementById('revert').disabled = !(isClientSolving() && hasUndo());
+		document.getElementById('undo').disabled = !(isClientSolving() && hasUndo());
+		document.getElementById('redo').disabled = !(isClientSolving() && hasRedo());
+		
+		let bidInput = document.getElementById('bid_input');
+		bidInput.disabled = !canEnterBid();
+		document.getElementById('bid').disabled = !canBid();
+		
+		let currentBid = game.getBid(playerId);
+		if (currentBid != null) {
+			document.getElementById('curr_bid').textContent = `Current Bid: ${currentBid.amount}`;
+		} else {
+			document.getElementById('curr_bid').textContent = "";
+		}
+		
+		let player = game.getPlayer(playerId);
+		
+		document.getElementById('gentleman').disabled = player.vote == 'SKIPBID';
+		document.getElementById('next').disabled = player.vote == 'NEXT';
+		//document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
+		//document.getElementById('demo').disabled = player.vote == 'DEMO';
+		
+		document.getElementById('name').textContent = "" + player.name;
+		document.getElementById('score').textContent = "" + player.getScore();
+	}
+	
+	let nameInput = document.getElementById('name_input');
+	let disabled = nameInput.value.length == 0;
+	document.getElementById('join_game').disabled = disabled;
+	document.getElementById('rename_button').disabled = disabled;
+}
+
+function skipSolve() {
+	if (socket != null) {
+		socket.send(`SKIP_SOLVE`);
+	}
+}
+
+function voteGentleman() {
+	if (socket != null) {
+		socket.send(`VOTE SKIPBID`);
+	}
+}
+
+function voteSkipDemo() {
+	if (socket != null) {
+		socket.send(`VOTE SKIPDEMO`);
+	}
+}
+
+function voteNextRound() {
+	if (socket != null) {
+		socket.send(`VOTE NEXT`);
+	}
+}
+
+function voteViewOptimal() {
+	if (socket != null) {
+		socket.send(`VOTE DEMO`);
+	}
+}
+
+function joinGame() {
+	let nameValue = document.getElementById('name_input').value;
+	if (nameValue.length > 0) {
+		if (socket != null) {
+			socket.send(`JOIN_GAME ${nameValue}`);
+		} else {
+			playerId = game.addPlayer(null, nameValue);
+		}
+	}
+}
+
+function leaveGame() {
+	if (playerId != null) {
+		game.removePlayer(playerId);
+		if (socket != null) {
+			socket.send(`LEAVE_GAME ${playerId}`);
+		}
+		playerId = null;
+	}
+}
+
+function tryRename() {
+	let nameValue = document.getElementById('name_input').value;
+	if (playerId != null && nameValue.length > 0 && nameValue != game.getPlayer(playerId).name) {
+		game.renamePlayer(playerId, nameValue);
+		if (socket != null) {
+			socket.send(`PLAYER_RENAME ${playerId} ${nameValue}`);
+		}
+	}
+}
+
+function canEnterBid() {
+	if (game.getState() == State.Bid) {
+		let currentBid = game.getBid(playerId);
+		return currentBid == null || (game.allowMultipleBids && currentBid.amount > 2);
+	}
+	return false;
+}
+
+function canBid() {
+	if (game.getState() == State.Bid) {
+		let currentBid = game.getBid(playerId);
+		let currentInputBid = getCurrentBidInputValue();
+		return currentInputBid > 1 && (currentBid == null || (game.allowMultipleBids && currentInputBid != null && currentInputBid < currentBid.amount));
+	}
+	return false;
+}
+
+function getCurrentBidInputValue() {
+	let bidText = document.getElementById('bid_input');
+	if (bidText.value.length > 0) {
+		let asInt = parseInt(bidText.value);
+		return asInt;
+	}
+	return 0;
+}
+
+function executeBid() {
+	if (canBid()) {
+		let bidText = document.getElementById('bid_input');
+		let asInt = getCurrentBidInputValue();
+		if (asInt > 1) {
+			bidText.value = '';
+			if (socket != null) {
+				socket.send(`MAKE_BID ${asInt}`);
+			} else {
+				game.setBid(playerId, asInt);
+			}
+		}
+	}
+}
+
+function hasUndo() {
+	return isClientSolving() && moveSequence.length > 0;
+}
+
+function undoMove() {
+	if (!canDoMoves()) {
+		return;
+	}
+	if (hasUndo()) {
+		let lastMove = moveSequence.pop();
+		robots[lastMove.color].warpTo(lastMove.position);
+		redoStack.push(lastMove);
+		moveCount = moveSequence.length;
+		if (socket != null) {
+			socket.send('UNDO_ROBOT');
+		}
+	}
+	updateUI();
+}
+
+function hasRedo() {
+	return isClientSolving() && redoStack.length > 0;
+}
+
+function redoMove() {
+	if (!canDoMoves()) {
+		return;
+	}
+	if (hasRedo()) {
+		let addMove = redoStack.pop();
+		let moveTarget = game.moveRobot(addMove.color, addMove.direction);
+		robots[addMove.color].warpTo(moveTarget);
+		moveSequence.push(addMove);
+		moveCount = moveSequence.length;
+		if (socket != null) {
+			socket.send('REDO_ROBOT');
+		}
+	}
+	updateUI();
+}
+
+function revertMoves() {
+	if (!canDoMoves()) {
+		return;
+	}
+	game.resetRobotPositions();
+	for (let i = 0; i < robots.length; ++i) {
+		robots[i].warpTo(game.robots[i]);
+	}
+	if (isClientSolving()) {
+		redoStack.push(...moveSequence.reverse());
+		moveSequence = [];
+		moveCount = 0;
+	}
+	updateUI();
+	
+	if (socket != null) {
+		socket.send('RESET_ROBOTS');
+	}
+}
+
+function leftPad(v, x) {
+	return v.toString().padStart(x, '0');
+}
+
+function epochDeltaToTime(deltaTime) {
+	let millis = deltaTime % 1000;
+	deltaTime = intdiv(deltaTime, 1000);
+	let seconds = deltaTime % 60;
+	deltaTime = intdiv(deltaTime, 60);
+	let minutes = deltaTime;
+
+	return `${minutes}:${leftPad(seconds, 2)}`
+}
+
+function canDoMoves() {
+	return isClientSolving() || game.state == State.Free;
+}
+
+function isClientSolving() {
+	return currentSolvingPlayer != null && playerId != null && currentSolvingPlayer == playerId;
+}
+
+function doDirectionMove(direction) {
+	if (selection.hasSelection()) {
+		let target = selection.getMoveEndpoint(direction);
+		if (game.state == State.Solve) {
+			moveSequence.push(new RobotMove(robots[selection.selectedRobot].getCell(), direction, null, robots[selection.selectedRobot].color));
+			redoStack = [];
+			moveCount = moveSequence.length;
+			updateUI();
+		}
+		socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
+		robots[selection.selectedRobot].moveTo(target);
+		return true;
+	}
+	return false;
+}
+
+canvas.addEventListener('click', function(evt) {
+	let mousePos = getMousePos(canvas, evt);
+	let cellPos = getCellFromPos(mousePos);
+	
+	let didAction = false;
+	let isFree = game.state == State.Free;
+	
+	if (canDoMoves()) {
+		if (selection.hasSelection()) {
+			if (isFree && evt.shiftKey) {
+				if (arrayFind(game.robots, cellPos) == -1) {
+					socket.send(`FREE_MOVE_ROBOT ${selection.selectedRobot} ${cellPos.x} ${cellPos.y}`);
+					robots[selection.selectedRobot].moveTo(cellPos);
+					didAction = true;
+				}
+			} else {
+				let direction = cellPos.sub(robots[selection.selectedRobot].getCell()).getDirection();
+				if (direction != null) {
+					let target = selection.getMoveEndpoint(direction);
+					if (target.equals(cellPos)) {
+						didAction = doDirectionMove(direction);
+					}
+				}
+			}
+			selection.clearSelection();
+		}
+		
+		if (!didAction && !selection.hasSelection()) {
+			for (let i = 0; i < robots.length; ++i) {
+				if (cellPos.equals(robots[i].getCell())) {
+					selection.setRobot(i);
+					didAction = true;
+					break;
+				}
+			}
+		}
+	}
+}, false);
+
+window.addEventListener("keydown", function(event) {
+	if (event.defaultPrevented) {
+		return;
+	}
+	
+	if (isClientSolving()) {
+		if (event.key == "z" && event.ctrlKey) {
+			undoMove();
+		}
+		
+		if (event.key == "y" && event.ctrlKey) {
+			redoMove();
+		}
+	}
+	
+	if (canDoMoves()) {
+		if (event.key >= '1' && event.key <= '9') {
+			let id = parseInt(event.key) - 1;
+			if (id < robots.length) {
+				selection.setRobot(id);
+			}
+		}
+	
+		if (selection.hasSelection()) {
+			if (event.key == "ArrowRight" || event.key == 'd') {
+				if (doDirectionMove(Direction.Right)) {
+					selection.clearSelection();
+				}
+			}
+			if (event.key == "ArrowLeft" || event.key == 'a') {
+				if (doDirectionMove(Direction.Left)) {
+					selection.clearSelection();
+				}
+			}
+			if (event.key == "ArrowUp" || event.key == 'w') {
+				if (doDirectionMove(Direction.Up)) {
+					selection.clearSelection();
+				}
+			}
+			if (event.key == "ArrowDown" || event.key == 's') {
+				if (doDirectionMove(Direction.Down)) {
+					selection.clearSelection();
+				}
+			}
+			if (event.key == "Escape" || event.key == 'x') {
+				selection.clearSelection();
+			}
+		}
+	}
+	
+	//event.preventDefault();
+}, true);
+
+let lastLoop = 0;
+function loop(timestamp) {
+	let deltaTime = (timestamp - lastLoop) / 1000.0;
+	lastLoop = timestamp;
+	
+	for (let i = 0; i < robots.length; ++i) {
+		robots[i].update(deltaTime);
+	}
+	
+	updateUI();
+	
+	drawGame(game, canvas);
+	
+	window.requestAnimationFrame(loop);
+}
+
+function onServerMessageReceived(data) {
+	let lines = data.split('\n');
+	
+	if (lines.length <= 0) {
+		return;
+	}
+	
+	for (let i = 0; i < lines.length; ++i) {
+		let [command, ...args] = lines[i].split(' ');
+		command = command.toUpperCase();
+		doServerCommand(command, args);
+	}
+}
+
+function doServerCommand(command, args) {
+	console.log(`${command} ${args}`);
+
+	if (command == 'GIVE_TOKENS') {
+		processGiveTokens(args);
+	} else if (command == 'REJECT_CLIENT') {
+		processRejectClient(args);
+	} else if (command == 'ASSIGN_PLAYER') {
+		playerId = parseInt(args[0]);
+	} else if (command == 'NEW_BOARD') {
+		processNewBoard(args);
+	} else if (command == 'PLAYER_JOINED') {
+		processPlayerJoined(args);
+	} else if (command == 'PLAYER_LEFT') {
+		processPlayerLeft(args)
+	} else if (command == 'PLAYER_RENAME') {
+		processRenamePlayer(args);
+	} else if (command == 'PLAYER_BID') {
+		processSetBid(args);
+	} else if (command == 'ROBOT_MOVEALL' || command == 'ROBOT_RESET') {
+		processRobotReset(args);
+		if (command == 'ROBOT_RESET') {
+			game.originalRobotConfig = [...game.robots];
+		}
+	} else if (command == 'ROBOT_MOVE') {
+		processRobotMove(args);
+	} else if (command == 'SET_STATE') {
+		processSetState(args);
+	} else if (command == 'TIME_SYNC') {
+		processTimeSync(args);
+	} else if (command == 'START_TIMER') {
+		processStartTimer(args);
+	} else if (command == 'START_SOLVE') {
+		processStartSolve(args);
+	} else if (command == 'PLAYER_VOTE') {
+		processPlayerVote(args);
+	}
+}
+
+function processPlayerVote(args) {
+	let playerId = parseInt(args[0]);
+	let player = game.getPlayer(playerId);
+	player.vote = args[1];
+
+	$(`#${makePlayerDivId(playerId)} > .player_vote`).text(`Vote: ${player.vote}`);
+}
+
+function processStartSolve(args) {
+	currentSolvingPlayer = parseInt(args[0]);
+	serverBidStartTime = parseInt(args[1]);
+	moveCount = null;
+	moveSequence = []
+	redoStack = []
+}
+
+function processStartTimer(args) {
+	serverBidStartTime = parseInt(args[0]);
+}
+
+function processTimeSync(args) {
+	let timeNow = Date.now();
+	let roundTripTime = timeNow - parseInt(args[0]);
+	let serverTime = parseInt(args[1]);
+	let halfRtt = roundTripTime / 2;
+	let serverTimeNow = serverTime + halfRtt;
+	
+	serverTimeDelta = serverTimeNow - timeNow;
+}
+
+function processGiveTokens(args) {
+	let playerId = parseInt(args[0]);
+	let player = game.getPlayer(playerId);
+	console.assert(playerId != Number.NaN);
+	console.assert(player != null);
+	
+	for (let i = 1; i < args.length; ++i) {
+		let goal = Goal.fromInt(parseInt(args[i]));
+		console.assert(goal != Number.NaN);
+		arrayRemove(game.goalsRemaining, goal);
+		if (player.tokens.indexOf(goal) == -1) {
+			player.tokens.push(goal);
+		}
+	}
+
+	$(`#${makePlayerDivId(playerId)} > .player_score`).text(`Score: ${player.tokens.length}`);
+	updateTokenCount();
+}
+
+function updateTokenCount() {
+	if (game.goalsRemaining.length == 0) {
+		let players = game.getPlayers(true);
+		$('#game_info').text(`${players[0].name} wins!`);
+	} else {
+		$('#game_info').text(`Tokens Remaining: ${game.goalsRemaining.length}`);
+	}
+}
+
+function setWinner(playerId) {
+	let player = game.getPlayer(playerId);
+	
+}
+
+function processNewBoard(args) {
+	let numRobots = parseInt(args[0]);
+	console.assert(numRobots != Number.NaN);
+	let boardSeed = parseInt(args[1]);
+	console.assert(boardSeed != Number.NaN);
+	
+	game.resetGame(numRobots, boardSeed);
+	
+	robots = [];
+	for (let i = 0; i < game.robots.length; ++i) {
+		robots.push(new Robot(game, game.robots[i], i));
+	}
+
+	updateTokenCount();
+}
+
+function processSetState(args) {
+	game.state = parseInt(args[0]);
+	game.clearVotes();
+
+	$(`.player_vote`).text('');
+
+	if (args.length > 1) {
+		if (isAnyOf(game.state, State.Bid, State.Solve, State.Demo, State.Free)) {
+			game.currentGoal = Goal.fromInt(parseInt(args[1]));
+		}
+	}
+	if (game.state == State.Bid) {
+		game.resetBids();
+		$(`.player_bid`).text('');
+	}
+	
+	selection.clearSelection();
+	serverBidStartTime = null;
+	currentSolvingPlayer = null;
+	moveSequence = []
+	redoStack = []
+	moveCount = null;
+}
+
+function processRejectClient(args) {
+	console.log(`Server rejected client: ${args[0]}`);
+	socket.close();
+}
+
+function makePlayerDivId(playerId) {
+	return `Player_${playerId}`;
+}
+
+function processPlayerJoined(args) {
+	let playerId = game.addPlayer(parseInt(args[0]), args[1]);
+	let player = game.getPlayer(playerId);
+
+	let playerDiv = document.getElementById('player_list');
+
+	const playerNode = document.createElement("div");
+	playerNode.id = makePlayerDivId(player.id);
+	playerNode.className = 'player_div';
+
+	const nameNode = document.createElement('span');
+	nameNode.textContent = `${player.name}`;
+	nameNode.className = 'player_name';
+	const scoreNode = document.createElement('span');
+	scoreNode.textContent = 'Score: 0';
+	scoreNode.className = 'player_score';
+	const bidNode = document.createElement('span');
+	bidNode.className = 'player_bid';
+	const voteNode = document.createElement('span');
+	voteNode.className = 'player_vote';
+
+	playerNode.appendChild(nameNode);
+	playerNode.appendChild(document.createElement("br"));
+	playerNode.appendChild(scoreNode);
+	playerNode.appendChild(document.createElement("br"));
+	playerNode.appendChild(bidNode);
+	playerNode.appendChild(document.createElement("br"));
+	playerNode.appendChild(voteNode);
+
+	playerDiv.appendChild(playerNode);
+}
+
+function processPlayerLeft(args) {
+	let leftId = parseInt(args[0]);
+	if (leftId == playerId) {
+		playerId = null;
+	}
+	game.removePlayer(leftId);
+
+	let playerDiv = document.getElementById(makePlayerDivId(leftId));
+	if (playerDiv != null) {
+		playerDiv.parentNode.removeChild(playerDiv);
+	}
+}
+
+function processRenamePlayer(args) {
+	let playerId = parseInt(args[0]);
+	let name = args[1];
+	game.renamePlayer(playerId, name);
+
+	$(`#${makePlayerDivId(playerId)} > .player_name`).text(name);
+}
+
+function processSetBid(args) {
+	let playerId = parseInt(args[0]);
+	let bid = parseInt(args[1]);
+	let timestamp = parseInt(args[2]);
+	if (bid == 0) {
+		game.removeBid(playerId);
+	} else {
+		game.setBid(playerId, bid, timestamp);
+	}
+
+	$(`#${makePlayerDivId(playerId)} > .player_bid`).text(`Bid: ${bid}`);
+}
+
+function processRobotReset(args) {
+	for (let i = 0; i < Math.min(robots.length * 2, args.length); i += 2) {
+		let robotId = intdiv(i, 2);
+		let dest = new Point(parseInt(args[i]), parseInt(args[i+1]));
+		robots[robotId].warpTo(dest);
+	}
+	selection.clearSelection();
+	if (args.length % 2 == 1) {
+		moveCount = parseInt(args[args.length - 1]);
+	}
+}
+
+function processRobotMove(args) {
+	let robotId = parseInt(args[0]);
+	let dest = new Point(parseInt(args[1]), parseInt(args[2]));
+	robots[robotId].moveTo(dest);
+	
+	if (selection.selectedRobot == robotId) {
+		selection.clearSelection();
+	}
+	
+	if (args.length > 3) {
+		moveCount = parseInt(args[3]);
+	}
+}
+
+window.onload = function() {
+	// TODO: If this doesn't connect, just leave it in the free state, this allows you to play locally
+
+	let targetServer = window.location.href;
+	let protocolPoint = targetServer.search(':')
+	let protocol = targetServer.slice(0, protocolPoint);
+	let isSecure = protocol == 'https';
+	let wsTarget = (isSecure ? 'wss' : 'ws') + targetServer.slice(protocolPoint);
+	console.log(wsTarget)
+	
+	for (let i = 0; i < game.robots.length; ++i) {
+		robots.push(new Robot(game, game.robots[i], i));
+	}
+	
+	socket = new WebSocket(wsTarget);
+
+	socket.onmessage = function(event) {
+		console.log(`Message = ${event.data}`);
+		onServerMessageReceived(event.data);
+	};
+
+	socket.onclose = function(event) {
+		if (event.wasClean) {
+			console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+		} else {
+			// e.g. server process killed or network down
+			// event.code is usually 1006 in this case
+			console.log('[close] Connection died');
+		}
+	};
+
+	socket.onerror = function(error) {
+		console.log(`[error] ${error.message}`);
+	};
+};
+
+window.onbeforeunload = function() {
+    socket.onclose = function () {}; // disable onclose handler first
+    socket.close();
+};
+
+document.getElementById('bid_input').onkeypress = function(event) { return event.key in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]; };
+document.getElementById('bid_input').onkeyup = function(event) {
+	if (event.keyCode === 13) {
+		// Cancel the default action, if needed
+		event.preventDefault();
+		// Trigger the button element with a click
+		document.getElementById("bid").click();
+	}
+};
+
+document.getElementById('revert').onclick = revertMoves;
+document.getElementById('undo').onclick = undoMove;
+document.getElementById('redo').onclick = redoMove;
+document.getElementById('skip').onclick = skipSolve;
+document.getElementById('bid').onclick = executeBid;
+document.getElementById('join_game').onclick = joinGame;
+document.getElementById('leave_game').onclick = leaveGame;
+document.getElementById('rename_button').onclick = tryRename;
+document.getElementById('next').onclick = voteNextRound;
+document.getElementById('gentleman').onclick = voteGentleman;
+document.getElementById('reset_robots').onclick = revertMoves;
+
+// document.getElementById('skip_demo').onclick = voteSkipDemo;
+// document.getElementById('demo').onclick = voteViewOptimal;
+
+window.requestAnimationFrame(loop);
+
+// TODO:
+// - Add the other boards and make board randomization work
+// - Add bumpers
+// - Demo state: optionally show the best available solution at the end of the round
+// - Clean up the UI, make it clearer when the state and round transition changes
+
+</script>
+
+</body>
+</html>
