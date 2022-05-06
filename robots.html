@@ -696,10 +696,10 @@ canvas.addEventListener('click', function(evt) {
 					}
 				}
 			}
-			selection.clearSelection();
 		}
 		
-		if (!didAction && !selection.hasSelection()) {
+		if (!didAction) {
+			selection.clearSelection();
 			for (let i = 0; i < robots.length; ++i) {
 				if (cellPos.equals(robots[i].getCell())) {
 					selection.setRobot(i);
@@ -736,24 +736,16 @@ window.addEventListener("keydown", function(event) {
 	
 		if (selection.hasSelection()) {
 			if (event.key == "ArrowRight" || event.key == 'd') {
-				if (doDirectionMove(Direction.Right)) {
-					selection.clearSelection();
-				}
+				doDirectionMove(Direction.Right);
 			}
 			if (event.key == "ArrowLeft" || event.key == 'a') {
-				if (doDirectionMove(Direction.Left)) {
-					selection.clearSelection();
-				}
+				doDirectionMove(Direction.Left);
 			}
 			if (event.key == "ArrowUp" || event.key == 'w') {
-				if (doDirectionMove(Direction.Up)) {
-					selection.clearSelection();
-				}
+				doDirectionMove(Direction.Up);
 			}
 			if (event.key == "ArrowDown" || event.key == 's') {
-				if (doDirectionMove(Direction.Down)) {
-					selection.clearSelection();
-				}
+				doDirectionMove(Direction.Down);
 			}
 			if (event.key == "Escape" || event.key == 'x') {
 				selection.clearSelection();
@@ -1029,7 +1021,7 @@ function processRobotMove(args) {
 	robots[robotId].moveTo(dest);
 	
 	if (selection.selectedRobot == robotId) {
-		selection.clearSelection();
+		selection.setRobot(selection.selectedRobot);
 	}
 	
 	if (args.length > 3) {
