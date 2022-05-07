@@ -1,4 +1,4 @@
-import { intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle } from './util.js';
+import { intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf } from './util.js';
 
 /// Global Contants
 
@@ -676,12 +676,13 @@ export class Game {
 		return this.players[playerId];
 	}
 
-	addPlayer(forceId = null, defaultName = null) {
+	addPlayer(defaultName = null, forceId = null) {
 		if (forceId == null) {
 			forceId = this.getNewPlayerKey();
 		}
 
 		this.players[forceId] = new Player(forceId, defaultName);
+
 		return forceId;
 	}
 
@@ -698,6 +699,22 @@ export class Game {
 		}
 
 		return players;
+	}
+
+	giveToken(playerId, ...tokens) {
+		let targetPlayer = this.getPlayer(playerId);
+		for (let i = 0; i < tokens.length; ++i) {
+			let goal = tokens[i];
+			arrayRemove(this.goalsRemaining, goal);
+			if (targetPlayer.tokens.indexOf(goal) == -1) {
+				targetPlayer.tokens.push(goal);
+			}
+		}
+		
+	}
+
+	giveTokens(playerId, tokens) {
+		this.giveToken(playerId, ...tokens);
 	}
 	
 	makeValidName(name) {
@@ -745,7 +762,7 @@ export class Game {
 	}
 	
 	playerAllowedMove(playerId) {
-		if (this.state == State.Free) {
+		if (isAnyOf(this.state, State.End, State.Free)) {
 			return true;
 		} else if (this.state == State.Solve) {
 			return this.getSolvingPlayer() != null && playerId != null && this.getSolvingPlayer() == playerId;
@@ -813,36 +830,35 @@ export class Game {
 	}
 
 	setBid(playerId, bidAmount, forceTimeout = null) {
-		console.assert(this.state == State.Bid);
-		
 		if (this.state == State.Bid) {
 			let playerBid = this.getBid(playerId);
+			let modifiedBid = false;
 			console.assert(playerBid == null || playerBid.playerId == playerId);
-			
-			if (forceTimeout != null) {
+
+			if (forceTimeout == null) {
+				forceTimeout = Date.now();
+			}
+
+			if (this.allowMultipleBids || playerBid == null) {
+				if (this.timerStartTime == null) {
+					this.startBidTimer(forceTimeout);
+				}
+				
 				if (playerBid == null) {
 					this.playerBids.push(new PlayerBid(playerId, bidAmount, forceTimeout));
 				} else {
-					playerBid.playerId = playerId;
 					playerBid.timestamp = forceTimout;
 					playerBid.amount = bidAmount;
-				}
-			} else {
-				if (this.allowMultipleBids || playerBid == null) {
-					if (this.timerStartTime == null) {
-						this.timerStartTime = Date.now();
-					}
-					if (playerBid == null) {
-						this.playerBids.push(new PlayerBid(playerId, bidAmount, this.bidTimeout - this.timerCountdown));
-					} else {
-						playerBid.amount = bidAmount;
-						playerBid.timestamp = this.bidTimeout - this.timerCountdown;
-					}
 				}
 			}
 		}
 		
 		return null;
+	}
+
+	startBidTimer(timestamp) {
+		console.assert(this.timerStartTime == null);
+		this.timerStartTime = timestamp;
 	}
 	
 	resetBids() {
@@ -853,14 +869,12 @@ export class Game {
 		this.clearVotes();
 		if (this.goalsRemaining.length > 0) {
 			this.state = State.Bid;
-			this.rearrangeRobots();
-			
+			let targetGoalIdx = Math.floor(this.rand.randFloat() * this.goalsRemaining.length);
+			this.currentGoal = this.goalsRemaining[targetGoalIdx];
 			let valid = false;
-			let targetGoalIdx = null;
 			
 			while (!valid) {
-				targetGoalIdx = Math.floor(this.rand.randFloat() * this.goalsRemaining.length);
-				this.currentGoal = this.goalsRemaining[targetGoalIdx];
+				this.rearrangeRobots();
 				// check if there are solutions that are less than 'earlyOut' and disallow them
 				if (this.earlyOut != null) {
 					let result = solveBoard(this.board, this.currentGoal, this.getRobotPositions(), this.earlyOut);
@@ -885,7 +899,6 @@ export class Game {
 		// TODO: add an option to do the stupid compare mode
 		this.playerBids.sort(PlayerBid.compare);
 		this.currentSolveBid = -1;
-		this.autoResetRobots();
 		this.advanceSolveState();
 	}
 	
@@ -917,9 +930,7 @@ export class Game {
 			}
 			
 			if (isSolved) {
-				let player = this.getPlayer(this.getSolvingPlayer());
-				player.scoreGoal(this.currentGoal);
-				arrayRemove(this.goalsRemaining, this.currentGoal);
+				this.giveToken(this.getSolvingPlayer(), this.currentGoal);
 				this.startFreeState();
 			}
 
@@ -943,10 +954,6 @@ export class Game {
 		this.currentSolveBid = null;
 		this.playerBids = [];
 		this.autoResetRobots();
-		
-		// Set up the solution demo
-		
-		//this.startBidState();
 	}
 	
 	canAutoStartSolve() {

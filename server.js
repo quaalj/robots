@@ -369,6 +369,7 @@ let stateVotes = {}
 stateVotes[State.Bid] = ['SKIPBID'];
 stateVotes[State.Demo] = ['SKIPDEMO'];
 stateVotes[State.Free] = ['DEMO', 'NEXT'];
+stateVotes[State.End] = ['DEMO'];
 
 let consensusVotes = ['SKIPBID', 'SKIPDEMO', 'NEXT'];
 
@@ -489,7 +490,7 @@ function doCommand(client, command, args) {
 		client.socket.send(makeTimeSyncCommand(args[0], Date.now()));
 	} else if (command == 'JOIN_GAME') {
 		let desiredName = game.makeValidName(args[0]);
-		client.playerId = game.addPlayer(null, desiredName);
+		client.playerId = game.addPlayer(desiredName, null);
 		client.cachedName = game.players[client.playerId].name;
 		
 		let playerJoinedCommand = makePlayerJoinedCommand(client.playerId, client.cachedName);
@@ -536,7 +537,7 @@ function doCommand(client, command, args) {
 			}
 		}
 	} else if (command == 'FREE_MOVE_ROBOT') {
-		if (game.state == State.Free) {
+		if (isAnyOf(game.state, State.Free, State.End)) {
 			let robotId = parseInt(args[0]);
 			let pos = new Point(parseInt(args[1]), parseInt(args[2]));
 			game.robots[robotId] = pos;
@@ -547,7 +548,7 @@ function doCommand(client, command, args) {
 		if (client.playerId != null && game.playerAllowedMove(client.playerId)) {
 			let robotId = parseInt(args[0]);
 			let direction = parseInt(args[1]);
-			let isFree = game.state == State.Free;
+			let isFree = isAnyOf(game.state, State.Free, State.End);
 			
 			if (!isFree) {
 				moveSequence.push(new RobotMove(game.robots[robotId], direction, null, robotId));
@@ -585,6 +586,10 @@ function doCommand(client, command, args) {
 	} else if (command == 'RESET_ROBOTS') {
 		if (client.playerId != null && game.playerAllowedMove(client.playerId)) {
 			game.resetRobotPositions();
+			if (game.getSolvingPlayer() == client.playerId) {
+				redoStack.push(...moveSequence.reverse());
+				moveSequence = [];
+			}
 			let command = makeRobotMoveAllCommand();
 			sendAllExcept(command, client.key);
 		}

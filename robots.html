@@ -37,29 +37,31 @@ div.player_div {
 <span id="game_info"></span>
 <br>
 
-<span id="timer" class="bid solve"></span>  <span id="num_moves" class="solve"></span>
-<br>
+<span class="bid solve">
+	<span id="timer"></span>  <span id="num_moves" class="solve"></span>
+	<br>
+</span>
 
-<span class="playing bid">
-	<input id="bid_input" type="text" class="playing bid" ></input>
+<span class="playing bid solve">
+	<input id="bid_input" type="text" class="playing bid"></input>
 	<button id="bid" class="playing bid">Bid</button>
-	<span id="curr_bid" class="playing bid solve"></span>
+	<span id="curr_bid"></span>
 	<button id="gentleman" class="playing bid">Skip Round</button>
 	<br>
 </span>
 
 <span class="playing solving">
-	<span id="turn_indicator" class="playing solving">Your Turn!<br></span>
-	<button id="revert" class="playing solving">Revert</button>
-	<button id="undo" class="playing solving">Undo</button>
-	<button id="redo" class="playing solving">Redo</button>
-	<button id="skip" class="playing solving">Give Up</button>
+	<span id="turn_indicator">Your Turn!<br></span>
+	<button id="revert">Revert</button>
+	<button id="undo">Undo</button>
+	<button id="redo">Redo</button>
+	<button id="skip">Give Up</button>
 	<br>
 </span>
 
-<span class="playing free">
-	<!-- <button id="demo" class="playing free">View Optimal</button> -->
-	<button id="reset_robots" class="playing free">Reset Robots</button>
+<span class="playing free end">
+	<!-- <button id="demo" class="playing free end">View Optimal</button> -->
+	<button id="reset_robots">Reset Robots</button>
 	<button id="next" class="playing free">Next Round</button>
 	<br>
 </span>
@@ -410,7 +412,8 @@ function updateUI() {
 	}
 	
 	$(hideStates.join(', ')).hide();
-	$('.' + State.str(game.state)).show();
+	let showState = State.str(game.state).toLowerCase()
+	$('.' + showState).show();
 	
 	if (playerId == null) {
 		$('.playing').hide();
@@ -649,7 +652,7 @@ function epochDeltaToTime(deltaTime) {
 }
 
 function canDoMoves() {
-	return isClientSolving() || game.state == State.Free;
+	return isClientSolving() || isAnyOf(game.state, State.Free, State.End);
 }
 
 function isClientSolving() {
@@ -856,21 +859,15 @@ function processTimeSync(args) {
 }
 
 function processGiveTokens(args) {
-	let playerId = parseInt(args[0]);
-	let player = game.getPlayer(playerId);
-	console.assert(playerId != Number.NaN);
-	console.assert(player != null);
-	
-	for (let i = 1; i < args.length; ++i) {
-		let goal = Goal.fromInt(parseInt(args[i]));
-		console.assert(goal != Number.NaN);
-		arrayRemove(game.goalsRemaining, goal);
-		if (player.tokens.indexOf(goal) == -1) {
-			player.tokens.push(goal);
-		}
-	}
+	let targetPlayerId = parseInt(args[0]);
+	let tokens = args.slice(1).map(t => Goal.fromInt(parseInt(t)));
+	console.assert(targetPlayerId != Number.NaN);
 
-	$(`#${makePlayerDivId(playerId)} > .player_score`).text(`Score: ${player.tokens.length}`);
+	game.giveTokens(targetPlayerId, tokens);
+
+	let player = game.getPlayer(targetPlayerId);
+
+	$(`#${makePlayerDivId(targetPlayerId)} > .player_score`).text(`Score: ${player.tokens.length}`);
 	updateTokenCount();
 }
 
@@ -938,7 +935,7 @@ function makePlayerDivId(playerId) {
 }
 
 function processPlayerJoined(args) {
-	let playerId = game.addPlayer(parseInt(args[0]), args[1]);
+	let playerId = game.addPlayer(args[1], parseInt(args[0]));
 	let player = game.getPlayer(playerId);
 
 	let playerDiv = document.getElementById('player_list');
