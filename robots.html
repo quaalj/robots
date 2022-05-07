@@ -98,6 +98,7 @@ import { Game, State, Color, Symbol, RobotMove, Goal } from "./robots.js";
 
 const TILE_SIZE = 32;
 const ROBOT_TWEEN_SPEED = 32.0;
+const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 
 function getSymbolImage(symbol) {
 	if (symbol == Symbol.Star) {
@@ -856,6 +857,8 @@ function processTimeSync(args) {
 	let serverTimeNow = serverTime + halfRtt;
 	
 	serverTimeDelta = serverTimeNow - timeNow;
+
+	console.log(`Server Time Delta = ${serverTimeDelta}`);
 }
 
 function processGiveTokens(args) {
@@ -1026,6 +1029,18 @@ function processRobotMove(args) {
 	}
 }
 
+var timeSyncTimeoutId = null;
+
+function doTimeSync() {
+	if (timeSyncTimeoutId != null) {
+		clearTimeout(timeSyncTimeoutId);
+	}
+
+	socket.send(`SYNC_TIME ${Date.now()}`);
+
+	timeSyncTimeoutId = setTimeout(doTimeSync, TIME_SYNC_INTERVAL);
+}
+
 window.onload = function() {
 	// TODO: If this doesn't connect, just leave it in the free state, this allows you to play locally
 
@@ -1041,6 +1056,10 @@ window.onload = function() {
 	}
 	
 	socket = new WebSocket(wsTarget);
+
+	socket.onopen = function(event) {
+		doTimeSync();
+	}
 
 	socket.onmessage = function(event) {
 		console.log(`Message = ${event.data}`);

@@ -836,7 +836,7 @@ export class Game {
 			console.assert(playerBid == null || playerBid.playerId == playerId);
 
 			if (forceTimeout == null) {
-				forceTimeout = Date.now();
+				forceTimeout = Date.now() + 123456;
 			}
 
 			if (this.allowMultipleBids || playerBid == null) {
@@ -907,7 +907,7 @@ export class Game {
 		this.resetRobotPositions();
 		++this.currentSolveBid;
 		if (this.currentSolveBid < this.playerBids.length) {
-			this.timerStartTime = Date.now();
+			this.timerStartTime = Date.now() + 123456;
 		} else {
 			this.startFreeState();
 		}

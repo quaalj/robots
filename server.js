@@ -487,7 +487,7 @@ function clearVotes() {
 
 function doCommand(client, command, args) {
 	if (command == 'SYNC_TIME') {
-		client.socket.send(makeTimeSyncCommand(args[0], Date.now()));
+		client.socket.send(makeTimeSyncCommand(args[0], Date.now() + 123456));
 	} else if (command == 'JOIN_GAME') {
 		let desiredName = game.makeValidName(args[0]);
 		client.playerId = game.addPlayer(desiredName, null);
