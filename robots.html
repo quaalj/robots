@@ -779,19 +779,20 @@ window.addEventListener("keydown", function(event) {
 	//event.preventDefault();
 }, true);
 
-function drawMoveArrow(canvas, start, end, color, direction, isFull) {
+function drawMoveArrow(start, end, color, direction, isStartFull, isDestFull) {
 	const arrowSize = 6;
 	const padding = 5;
 	const lineThickness = 1.5;
 
 	let ctx = canvas.getContext("2d");
 	let offset = TILE_SIZE / 2;
-	let fullCellAdjustment = isFull ? offset : padding;
+	let fullStartCellAdjustment = isStartFull ? offset : padding;
+	let fullDestCellAdjustment = isDestFull ? offset : padding;
 
-	let x1 = start.x * TILE_SIZE + offset - (padding) * (direction % 2 - 1) * (direction - 1);
-	let y1 = start.y * TILE_SIZE + offset + (padding) * (direction % 2) * (direction - 2);
-	let x2 = end.x * TILE_SIZE + offset + (fullCellAdjustment) * (direction % 2 - 1) * (direction - 1);
-	let y2 = end.y * TILE_SIZE + offset - (fullCellAdjustment) * (direction % 2) * (direction - 2);
+	let x1 = start.x * TILE_SIZE + offset - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+	let y1 = start.y * TILE_SIZE + offset + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
+	let x2 = end.x * TILE_SIZE + offset + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+	let y2 = end.y * TILE_SIZE + offset - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
 
 	let arrowAngle = -1 * Math.PI / 2 * direction;
 
@@ -830,14 +831,17 @@ function hasFutureMoves(robotColor, index) {
 }
 
 function updateDemo(timestamp) {
-
 		for(let i = 0; i < stateSequence.length; i++){
 			let state = stateSequence[i];
 			let color = state.color;
 			let startPosition = state.position;
 			let endPosition = game.moveRobot(color, state.direction);
+			let isStartFull = false;
 			let isDestFull = false;
 
+			if(game.board.getCell(startPosition).getGoal()) {
+				isStartFull = true;
+			}
 			if(game.board.getCell(endPosition).getGoal()) {
 				isDestFull = true;
 			}
@@ -847,7 +851,7 @@ function updateDemo(timestamp) {
 				console.log("hello!");
 			}
 
-			drawMoveArrow(canvas, startPosition, endPosition, color, state.direction, isDestFull);
+			drawMoveArrow(startPosition, endPosition, color, state.direction, isStartFull, isDestFull);
 			robots[color].warpTo(endPosition);
 		}
 
