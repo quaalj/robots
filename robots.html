@@ -66,12 +66,11 @@ div.player_div {
 	<br>
 </span>
 
-<!-- 
 <span class="playing demo">
 	<button id="skip_demo" class="player demo">Skip Demo</button>
 	<br>
 </span>
--->
+
 
 <span class="playing">
 	Name: <span id="name"></span>
@@ -139,6 +138,20 @@ function getColorValue(color) {
 		return "#FF0000";
 	} else if (color == Color.Blue) {
 		return "#0000FF";
+	} else {
+		return "#FFFFFF";
+	}
+}
+
+function getColorValueArrow(color) {
+	if (color == Color.Yellow) {
+		return "#AAAA22";
+	} else if (color == Color.Green) {
+		return "#22AA22";
+	} else if (color == Color.Red) {
+		return "#AA2222";
+	} else if (color == Color.Blue) {
+		return "#2222AA";
 	} else {
 		return "#FFFFFF";
 	}
@@ -468,7 +481,7 @@ function updateUI() {
 		
 		document.getElementById('gentleman').disabled = player.vote == 'SKIPBID';
 		document.getElementById('next').disabled = player.vote == 'NEXT';
-		//document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
+		document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
 		document.getElementById('demo').disabled = player.vote == 'DEMO';
 		
 		document.getElementById('name').textContent = "" + player.name;
@@ -766,23 +779,25 @@ window.addEventListener("keydown", function(event) {
 	//event.preventDefault();
 }, true);
 
-function drawMoveArrow(canvas, start, end, color, direction) {
+function drawMoveArrow(canvas, start, end, color, direction, isFull) {
 	const arrowSize = 6;
 	const padding = 5;
+	const lineThickness = 1.5;
 
 	let ctx = canvas.getContext("2d");
 	let offset = TILE_SIZE / 2;
+	let fullCellAdjustment = isFull ? offset : padding;
 
-	let x1 = start.x * TILE_SIZE + offset - padding * (direction % 2 - 1) * (direction - 1);
-	let y1 = start.y * TILE_SIZE + offset + padding * (direction % 2) * (direction - 2);
-	let x2 = end.x * TILE_SIZE + offset + padding * (direction % 2 - 1) * (direction - 1);
-	let y2 = end.y * TILE_SIZE + offset - padding * (direction % 2) * (direction - 2);
-
+	let x1 = start.x * TILE_SIZE + offset - (padding) * (direction % 2 - 1) * (direction - 1);
+	let y1 = start.y * TILE_SIZE + offset + (padding) * (direction % 2) * (direction - 2);
+	let x2 = end.x * TILE_SIZE + offset + (fullCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+	let y2 = end.y * TILE_SIZE + offset - (fullCellAdjustment) * (direction % 2) * (direction - 2);
 
 	let arrowAngle = -1 * Math.PI / 2 * direction;
 
-	ctx.strokeStyle = getColorValue(color);
-	ctx.lineWidth = 1;
+	ctx.strokeStyle = getColorValueArrow(color);
+
+	ctx.lineWidth = 2;
 
 	// arrow shaft
 	ctx.beginPath();
@@ -802,6 +817,18 @@ function drawMoveArrow(canvas, start, end, color, direction) {
 	ctx.stroke();
 }
 
+function hasFutureMoves(robotColor, index) {
+	let result = false;
+
+	for(; index < stateSequence.length; index++) {
+		if(stateSequence[index].color == robotColor)
+		{
+			result = true;
+		}
+	}
+	return result;
+}
+
 function updateDemo(timestamp) {
 
 		for(let i = 0; i < stateSequence.length; i++){
@@ -809,8 +836,18 @@ function updateDemo(timestamp) {
 			let color = state.color;
 			let startPosition = state.position;
 			let endPosition = game.moveRobot(color, state.direction);
+			let isDestFull = false;
 
-			drawMoveArrow(canvas, startPosition, endPosition, color, state.direction);
+			if(game.board.getCell(endPosition).getGoal()) {
+				isDestFull = true;
+			}
+
+			if(!hasFutureMoves(color, i + 1)) {
+				isDestFull = true;
+				console.log("hello!");
+			}
+
+			drawMoveArrow(canvas, startPosition, endPosition, color, state.direction, isDestFull);
 			robots[color].warpTo(endPosition);
 		}
 
@@ -1178,7 +1215,7 @@ document.getElementById('next').onclick = voteNextRound;
 document.getElementById('gentleman').onclick = voteGentleman;
 document.getElementById('reset_robots').onclick = revertMoves;
 
-// document.getElementById('skip_demo').onclick = voteSkipDemo;
+document.getElementById('skip_demo').onclick = voteSkipDemo;
 document.getElementById('demo').onclick = voteViewOptimal;
 
 window.requestAnimationFrame(loop);
