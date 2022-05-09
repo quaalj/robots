@@ -68,6 +68,7 @@ div.player_div {
 
 <span class="playing demo">
 	<button id="skip_demo" class="player demo">Skip Demo</button>
+	<span id="solution_indicator" class="playing demo"></span>
 	<br>
 </span>
 
@@ -779,26 +780,27 @@ window.addEventListener("keydown", function(event) {
 	//event.preventDefault();
 }, true);
 
-function drawMoveArrow(start, end, color, direction, isStartFull, isDestFull) {
+function drawMoveArrow(start, end, color, direction, isStartFull, isDestFull, dodge) {
 	const arrowSize = 6;
 	const padding = 5;
 	const lineThickness = 1.5;
+	const dodgeWidth = 4;
 
 	let ctx = canvas.getContext("2d");
 	let offset = TILE_SIZE / 2;
 	let fullStartCellAdjustment = isStartFull ? offset : padding;
 	let fullDestCellAdjustment = isDestFull ? offset : padding;
 
-	let x1 = start.x * TILE_SIZE + offset - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
-	let y1 = start.y * TILE_SIZE + offset + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
-	let x2 = end.x * TILE_SIZE + offset + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
-	let y2 = end.y * TILE_SIZE + offset - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
+	let x1 = start.x * TILE_SIZE + offset - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1) + dodgeWidth * dodge * (direction % 2) * (direction - 2);
+	let y1 = start.y * TILE_SIZE + offset + (fullStartCellAdjustment) * (direction % 2) * (direction - 2) + dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);
+	let x2 = end.x * TILE_SIZE + offset + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1) + dodgeWidth * dodge * (direction % 2) * (direction - 2);
+	let y2 = end.y * TILE_SIZE + offset - (fullDestCellAdjustment) * (direction % 2) * (direction - 2) + dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);;
 
 	let arrowAngle = -1 * Math.PI / 2 * direction;
 
 	ctx.strokeStyle = getColorValueArrow(color);
 
-	ctx.lineWidth = 2;
+	ctx.lineWidth = lineThickness;
 
 	// arrow shaft
 	ctx.beginPath();
@@ -830,37 +832,74 @@ function hasFutureMoves(robotColor, index) {
 	return result;
 }
 
+function addCellLineCount(cellArray, startPoint, endPoint, direction) {
+	let directionUnit = Point.fromDirection(direction);
+
+	for(let currPoint = startPoint; !currPoint.equals(endPoint); currPoint = currPoint.add(directionUnit)) {
+		cellArray[currPoint.y * game.board.height + currPoint.x] += 1;
+	}
+}
+
+function findMaxLineCount(cellArray, startPoint, endPoint, direction) {
+	let max = 0;
+	let directionUnit = Point.fromDirection(direction);
+
+	for(let currPoint = startPoint; !currPoint.equals(endPoint); currPoint = currPoint.add(directionUnit)) {
+		let curr = cellArray[currPoint.y * game.board.height + currPoint.x];
+
+		if(curr > max) {
+			max = curr;
+		}
+	}
+
+	return max;
+}
+
 function updateDemo(timestamp) {
-		for(let i = 0; i < stateSequence.length; i++){
-			let state = stateSequence[i];
-			let color = state.color;
-			let startPosition = state.position;
-			let endPosition = game.moveRobot(color, state.direction);
-			let isStartFull = false;
-			let isDestFull = false;
+	let cellHCount = Array(game.board.width * game.board.height).fill(0);
+	let cellVCount = Array(game.board.width * game.board.height).fill(0);
 
-			if(game.board.getCell(startPosition).getGoal()) {
-				isStartFull = true;
-			}
-			if(game.board.getCell(endPosition).getGoal()) {
-				isDestFull = true;
-			}
+	for(let i = 0; i < stateSequence.length; i++){
+		let state = stateSequence[i];
+		let color = state.color;
+		let startPosition = state.position;
+		let endPosition = game.moveRobot(color, state.direction);
+		let isStartFull = false;
+		let isDestFull = false;
+		let dodge = 0;
 
-			if(!hasFutureMoves(color, i + 1)) {
-				isDestFull = true;
-				console.log("hello!");
-			}
-
-			drawMoveArrow(startPosition, endPosition, color, state.direction, isStartFull, isDestFull);
-			robots[color].warpTo(endPosition);
+		if(game.board.getCell(startPosition).getGoal()) {
+			isStartFull = true;
+		}
+		if(game.board.getCell(endPosition).getGoal()) {
+			isDestFull = true;
 		}
 
-		for (let i = 0; i < robots.length; ++i)
-		{
-			robots[i].draw(canvas);
+		if(!hasFutureMoves(color, i + 1)) {
+			isDestFull = true;
 		}
 
-		game.resetRobotPositions();
+		if(state.direction == Direction.Left || state.direction == Direction.Right) {
+			addCellLineCount(cellHCount, startPosition, endPosition, state.direction);
+			dodge = findMaxLineCount(cellHCount, startPosition, endPosition, state.direction) - 1;
+		} else {
+			addCellLineCount(cellVCount, startPosition, endPosition, state.direction);
+			dodge = findMaxLineCount(cellVCount, startPosition, endPosition, state.direction) - 1;
+		}
+
+		drawMoveArrow(startPosition, endPosition, color, state.direction, isStartFull, isDestFull, dodge);
+		robots[color].warpTo(endPosition);
+	}
+
+	document.getElementById('solution_indicator').textContent = `The computer found: ${stateSequence.length}`;
+
+
+	for (let i = 0; i < robots.length; ++i)
+	{
+		robots[i].draw(canvas);
+	}
+
+	game.resetRobotPositions();
 }
 
 let lastLoop = 0;
