@@ -60,7 +60,7 @@ div.player_div {
 </span>
 
 <span class="playing free end">
-	<!-- <button id="demo" class="playing free end">View Optimal</button> -->
+	<button id="demo" class="playing free end">View Optimal</button>
 	<button id="reset_robots">Reset Robots</button>
 	<button id="next" class="playing free">Next Round</button>
 	<br>
@@ -94,7 +94,7 @@ div.player_div {
 <script type="module">
 
 import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } from "./util.js";
-import { Game, State, Color, Symbol, RobotMove, Goal } from "./robots.js";
+import { Game, State, Color, Symbol, RobotMove, Goal, solveBoard } from "./robots.js";
 
 const TILE_SIZE = 32;
 const ROBOT_TWEEN_SPEED = 32.0;
@@ -337,6 +337,7 @@ var canvas = document.getElementById("MainCanvas");
 var moveSequence = [];
 var redoStack = [];
 var moveCount = null;
+var stateSequence = [];
 
 var playerId = null;
 var currentSolvingPlayer = null;
@@ -353,9 +354,14 @@ function clearCanvas(canvas) {
 
 function drawGame(game, canvas, offset = new Point(0, 0)) {
 	clearCanvas(canvas);
-	drawBoard(game.board, canvas, offset);	
-	for (let i = 0; i < robots.length; ++i) {
-		robots[i].draw(canvas, offset);
+	drawBoard(game.board, canvas, offset);
+
+	if(game.state != State.Demo)
+	{
+		for (let i = 0; i < robots.length; ++i)
+		{
+			robots[i].draw(canvas, offset);
+		}
 	}
 	
 	if (selection.hasSelection()) {
@@ -463,7 +469,7 @@ function updateUI() {
 		document.getElementById('gentleman').disabled = player.vote == 'SKIPBID';
 		document.getElementById('next').disabled = player.vote == 'NEXT';
 		//document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
-		//document.getElementById('demo').disabled = player.vote == 'DEMO';
+		document.getElementById('demo').disabled = player.vote == 'DEMO';
 		
 		document.getElementById('name').textContent = "" + player.name;
 		document.getElementById('score').textContent = "" + player.getScore();
@@ -760,11 +766,43 @@ window.addEventListener("keydown", function(event) {
 	//event.preventDefault();
 }, true);
 
+function drawMoveArrow(canvas, start, end, color, direction) {
+	let ctx = canvas.getContext("2d");
+	let offset = TILE_SIZE / 2;
+
+	ctx.beginPath();
+	ctx.strokeStyle = getColorValue(color);
+	ctx.moveTo(start.x * TILE_SIZE + offset, start.y * TILE_SIZE + offset);
+	ctx.lineTo(end.x * TILE_SIZE + offset, end.y * TILE_SIZE + offset);
+	ctx.lineWidth = 1;
+	ctx.stroke();
+}
+
+function updateDemo(timestamp) {
+
+		for(let i = 0; i < stateSequence.length; i++){
+			let state = stateSequence[i];
+			let color = state.color;
+			let startPosition = state.position;
+			let endPosition = game.moveRobot(color, state.direction);
+
+			drawMoveArrow(canvas, startPosition, endPosition, color, state.direction);
+			robots[color].warpTo(endPosition);
+		}
+
+		for (let i = 0; i < robots.length; ++i)
+		{
+			robots[i].draw(canvas);
+		}
+
+		game.resetRobotPositions();
+}
+
 let lastLoop = 0;
 function loop(timestamp) {
 	let deltaTime = (timestamp - lastLoop) / 1000.0;
 	lastLoop = timestamp;
-	
+
 	for (let i = 0; i < robots.length; ++i) {
 		robots[i].update(deltaTime);
 	}
@@ -772,7 +810,11 @@ function loop(timestamp) {
 	updateUI();
 	
 	drawGame(game, canvas);
-	
+
+	if(game.state == State.Demo) {
+		updateDemo(timestamp)
+	}
+
 	window.requestAnimationFrame(loop);
 }
 
@@ -919,7 +961,11 @@ function processSetState(args) {
 		game.resetBids();
 		$(`.player_bid`).text('');
 	}
-	
+
+	if (game.state == State.Demo) {
+		stateSequence = solveBoard(game.board, game.currentGoal, game.robots, null);
+	}
+
 	selection.clearSelection();
 	serverBidStartTime = null;
 	currentSolvingPlayer = null;
@@ -1109,7 +1155,7 @@ document.getElementById('gentleman').onclick = voteGentleman;
 document.getElementById('reset_robots').onclick = revertMoves;
 
 // document.getElementById('skip_demo').onclick = voteSkipDemo;
-// document.getElementById('demo').onclick = voteViewOptimal;
+document.getElementById('demo').onclick = voteViewOptimal;
 
 window.requestAnimationFrame(loop);
 

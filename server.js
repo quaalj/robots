@@ -464,6 +464,12 @@ function nextRound() {
 	sendAll(commands.join('\n'));
 }
 
+function startDemo() {
+	game.startDemoState();
+	let command = [makeGameStateCommand(game.state), makeRobotResetCommand()];
+	sendAll(command.join('\n'));
+}
+
 function executeVote(vote) {
 	console.log(`Majority has voted ${vote}`);
 	
@@ -477,7 +483,7 @@ function executeVote(vote) {
 	} else if (isAnyOf(vote, 'SKIPDEMO', 'NEXT')) {
 		nextRound();
 	} else if (vote == 'DEMO') {
-		// TODO: demo state
+		startDemo();
 	}
 }
 
