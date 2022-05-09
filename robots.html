@@ -767,14 +767,38 @@ window.addEventListener("keydown", function(event) {
 }, true);
 
 function drawMoveArrow(canvas, start, end, color, direction) {
+	const arrowSize = 6;
+	const padding = 5;
+
 	let ctx = canvas.getContext("2d");
 	let offset = TILE_SIZE / 2;
 
-	ctx.beginPath();
+	let x1 = start.x * TILE_SIZE + offset - padding * (direction % 2 - 1) * (direction - 1);
+	let y1 = start.y * TILE_SIZE + offset + padding * (direction % 2) * (direction - 2);
+	let x2 = end.x * TILE_SIZE + offset + padding * (direction % 2 - 1) * (direction - 1);
+	let y2 = end.y * TILE_SIZE + offset - padding * (direction % 2) * (direction - 2);
+
+
+	let arrowAngle = -1 * Math.PI / 2 * direction;
+
 	ctx.strokeStyle = getColorValue(color);
-	ctx.moveTo(start.x * TILE_SIZE + offset, start.y * TILE_SIZE + offset);
-	ctx.lineTo(end.x * TILE_SIZE + offset, end.y * TILE_SIZE + offset);
 	ctx.lineWidth = 1;
+
+	// arrow shaft
+	ctx.beginPath();
+	ctx.moveTo(x1, y1);
+	ctx.lineTo(x2, y2);
+	ctx.stroke();
+
+	// arrow head
+	ctx.beginPath();
+	ctx.moveTo(x2,y2);
+	ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * arrowSize, y2 - Math.sin(arrowAngle + Math.PI / 4) * arrowSize);
+	ctx.stroke();
+
+	ctx.beginPath();
+	ctx.moveTo(x2,y2);
+	ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * arrowSize, y2 - Math.sin(arrowAngle - Math.PI / 4) * arrowSize)
 	ctx.stroke();
 }
 
