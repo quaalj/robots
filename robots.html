@@ -792,15 +792,27 @@ function drawMoveArrow(start, end, color, direction, isStartFull, isDestFull, do
 	let fullStartCellAdjustment = isStartFull ? offset : padding;
 	let fullDestCellAdjustment = isDestFull ? offset : padding;
 
-	let x1 = start.x * TILE_SIZE + offset - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1) + dodgeWidth * dodge * (direction % 2) * (direction - 2);
-	let y1 = start.y * TILE_SIZE + offset + (fullStartCellAdjustment) * (direction % 2) * (direction - 2) + dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);
-	let x2 = end.x * TILE_SIZE + offset + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1) + dodgeWidth * dodge * (direction % 2) * (direction - 2);
-	let y2 = end.y * TILE_SIZE + offset - (fullDestCellAdjustment) * (direction % 2) * (direction - 2) + dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);;
+	// place start and end points in center of tile
+	let x1 = start.x * TILE_SIZE + offset;
+	let y1 = start.y * TILE_SIZE + offset;
+	let x2 = end.x * TILE_SIZE + offset;
+	let y2 = end.y * TILE_SIZE + offset;
+
+	// shrink arrow length if start or destination cell is full
+	x1 = x1 - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+	y1 = y1 + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
+	x2 = x2 + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+	y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
+
+	// displace arrow to the side if cells in the arrow's path already contain arrows
+	x1 += dodgeWidth * dodge * (direction % 2) * (direction - 2);
+	y1 += dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);
+	x2 += dodgeWidth * dodge * (direction % 2) * (direction - 2);
+	y2 += dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);
 
 	let arrowAngle = -1 * Math.PI / 2 * direction;
 
 	ctx.strokeStyle = getColorValueArrow(color);
-
 	ctx.lineWidth = lineThickness;
 
 	// arrow shaft
@@ -834,54 +846,61 @@ function hasFutureMoves(robotColor, index) {
 }
 
 function addCellLineCount(cellArray, startPoint, endPoint, direction) {
+	let currPoint = startPoint;
 	let directionUnit = Point.fromDirection(direction);
 
-	for(let currPoint = startPoint; !currPoint.equals(endPoint); currPoint = currPoint.add(directionUnit)) {
-		cellArray[currPoint.y * game.board.height + currPoint.x] += 1;
-	}
+	do {
+		currPoint = currPoint.add(directionUnit);
+		cellArray[currPoint.y * game.board.height + currPoint.x]++;
+	} while(!currPoint.equals(endPoint))
 }
 
 function findMaxLineCount(cellArray, startPoint, endPoint, direction) {
-	let max = 0;
+	let currPoint = startPoint;
+	let max = cellArray[startPoint.y * game.board.height + startPoint.x];
 	let directionUnit = Point.fromDirection(direction);
 
-	for(let currPoint = startPoint; !currPoint.equals(endPoint); currPoint = currPoint.add(directionUnit)) {
+	do {
+		currPoint = currPoint.add(directionUnit);
 		let curr = cellArray[currPoint.y * game.board.height + currPoint.x];
 
 		if(curr > max) {
 			max = curr;
 		}
-	}
+	} while(!currPoint.equals(endPoint))
+
 
 	return max;
 }
 
 var demoStep = 0;
 function updateDemo(timestamp) {
+	// how many horizontal and vertical lines pass through each cell
 	let cellHCount = Array(game.board.width * game.board.height).fill(0);
 	let cellVCount = Array(game.board.width * game.board.height).fill(0);
 
 	for(let i = 0; i <= demoStep && i < stateSequence.length; i++){
-
 		let state = stateSequence[i];
 		let color = state.color;
 		let startPosition = state.position;
 		let endPosition = game.moveRobot(color, state.direction);
-		let isStartFull = false;
-		let isDestFull = false;
+		let startFull = false;
+		let destFull = false;
 		let dodge = 0;
 
+		// if a cell is full (has robot ending there or has goal tile), end arrow early so you can see it
 		if(game.board.getCell(startPosition).getGoal()) {
-			isStartFull = true;
+			 startFull = true;
 		}
 		if(game.board.getCell(endPosition).getGoal()) {
-			isDestFull = true;
+			destFull = true;
 		}
 
 		if(!hasFutureMoves(color, i + 1)) {
-			isDestFull = true;
+			destFull = true;
 		}
 
+		// determine how far off to the side to dodge the arrow
 		if(state.direction == Direction.Left || state.direction == Direction.Right) {
 			addCellLineCount(cellHCount, startPosition, endPosition, state.direction);
 			dodge = findMaxLineCount(cellHCount, startPosition, endPosition, state.direction) - 1;
@@ -890,7 +909,7 @@ function updateDemo(timestamp) {
 			dodge = findMaxLineCount(cellVCount, startPosition, endPosition, state.direction) - 1;
 		}
 
-		drawMoveArrow(startPosition, endPosition, color, state.direction, isStartFull, isDestFull, dodge);
+		drawMoveArrow(startPosition, endPosition, color, state.direction, startFull, destFull, dodge);
 		robots[color].warpTo(endPosition);
 	}
 
@@ -903,6 +922,7 @@ function updateDemo(timestamp) {
 
 	game.resetRobotPositions();
 
+	// reset robots at the beginning of the loop
 	if (demoStep < 0) {
 		for (let i = 0; i < robots.length; i++)
 		{
@@ -1078,9 +1098,12 @@ function processSetState(args) {
 
 	if (game.state == State.Demo) {
 		const demoStepSpeed = 1000;
+		const warmUpTime = 1; // number of steps before the animation starts
+		const lingerTime = 5; // number of steps after demo is finished before it restarts
+
 		stateSequence = solveBoard(game.board, game.currentGoal, game.robots, null);
-		demoStep = -1;
-		demoInterval = window.setInterval(function() { demoStep = (demoStep + 2) % (stateSequence.length + 5) - 1;}, demoStepSpeed);
+		demoStep = -1 * warmUpTime;
+		demoInterval = window.setInterval(function() { demoStep = (demoStep + 1 + warmUpTime) % (stateSequence.length + lingerTime) - warmUpTime;}, demoStepSpeed);
 	}
 
 	selection.clearSelection();
