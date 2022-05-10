@@ -352,6 +352,7 @@ var moveSequence = [];
 var redoStack = [];
 var moveCount = null;
 var stateSequence = [];
+var demoInterval;
 
 var playerId = null;
 var currentSolvingPlayer = null;
@@ -855,11 +856,13 @@ function findMaxLineCount(cellArray, startPoint, endPoint, direction) {
 	return max;
 }
 
+var demoStep = 0;
 function updateDemo(timestamp) {
 	let cellHCount = Array(game.board.width * game.board.height).fill(0);
 	let cellVCount = Array(game.board.width * game.board.height).fill(0);
 
-	for(let i = 0; i < stateSequence.length; i++){
+	for(let i = 0; i <= demoStep && i < stateSequence.length; i++){
+
 		let state = stateSequence[i];
 		let color = state.color;
 		let startPosition = state.position;
@@ -893,13 +896,19 @@ function updateDemo(timestamp) {
 
 	document.getElementById('solution_indicator').textContent = `The computer found: ${stateSequence.length}`;
 
-
 	for (let i = 0; i < robots.length; ++i)
 	{
 		robots[i].draw(canvas);
 	}
 
 	game.resetRobotPositions();
+
+	if (demoStep < 0) {
+		for (let i = 0; i < robots.length; i++)
+		{
+			robots[i].warpTo(game.getRobotPositions()[i]);
+		}
+	}
 }
 
 let lastLoop = 0;
@@ -1059,6 +1068,7 @@ function processSetState(args) {
 	if (args.length > 1) {
 		if (isAnyOf(game.state, State.Bid, State.Solve, State.Demo, State.Free)) {
 			game.currentGoal = Goal.fromInt(parseInt(args[1]));
+			window.clearInterval(demoInterval);
 		}
 	}
 	if (game.state == State.Bid) {
@@ -1067,7 +1077,10 @@ function processSetState(args) {
 	}
 
 	if (game.state == State.Demo) {
+		const demoStepSpeed = 1000;
 		stateSequence = solveBoard(game.board, game.currentGoal, game.robots, null);
+		demoStep = -1;
+		demoInterval = window.setInterval(function() { demoStep = (demoStep + 2) % (stateSequence.length + 5) - 1;}, demoStepSpeed);
 	}
 
 	selection.clearSelection();
