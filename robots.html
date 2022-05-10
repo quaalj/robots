@@ -1101,6 +1101,8 @@ function processSetState(args) {
 		const warmUpTime = 1; // number of steps before the animation starts
 		const lingerTime = 5; // number of steps after demo is finished before it restarts
 
+		game.resetRobotPositions();
+
 		stateSequence = solveBoard(game.board, game.currentGoal, game.robots, null);
 		demoStep = -1 * warmUpTime;
 		demoInterval = window.setInterval(function() { demoStep = (demoStep + 1 + warmUpTime) % (stateSequence.length + lingerTime) - warmUpTime;}, demoStepSpeed);

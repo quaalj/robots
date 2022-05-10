@@ -466,7 +466,7 @@ function nextRound() {
 
 function startDemo() {
 	game.startDemoState();
-	let command = [makeGameStateCommand(game.state), makeRobotResetCommand()];
+	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state)];
 	sendAll(command.join('\n'));
 }
 
