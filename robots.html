@@ -782,15 +782,15 @@ window.addEventListener("keydown", function(event) {
 }, true);
 
 function drawMoveArrow(start, end, color, direction, isStartFull, isDestFull, dodge) {
-	const arrowSize = 6;
-	const padding = 5;
-	const lineThickness = 1.5;
-	const dodgeWidth = 4;
+	const ARROW_SIZE = 6;
+	const PADDING = 5;
+	const LINE_THICKNESS = 1.5;
+	const DODGE_WIDTH = 4;
 
 	let ctx = canvas.getContext("2d");
 	let offset = TILE_SIZE / 2;
-	let fullStartCellAdjustment = isStartFull ? offset : padding;
-	let fullDestCellAdjustment = isDestFull ? offset : padding;
+	let fullStartCellAdjustment = isStartFull ? offset : PADDING;
+	let fullDestCellAdjustment = isDestFull ? offset : PADDING;
 
 	// place start and end points in center of tile
 	let x1 = start.x * TILE_SIZE + offset;
@@ -805,15 +805,15 @@ function drawMoveArrow(start, end, color, direction, isStartFull, isDestFull, do
 	y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
 
 	// displace arrow to the side if cells in the arrow's path already contain arrows
-	x1 += dodgeWidth * dodge * (direction % 2) * (direction - 2);
-	y1 += dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);
-	x2 += dodgeWidth * dodge * (direction % 2) * (direction - 2);
-	y2 += dodgeWidth * dodge * (direction % 2 - 1) * (direction - 1);
+	x1 += DODGE_WIDTH * dodge * (direction % 2) * (direction - 2);
+	y1 += DODGE_WIDTH * dodge * (direction % 2 - 1) * (direction - 1);
+	x2 += DODGE_WIDTH * dodge * (direction % 2) * (direction - 2);
+	y2 += DODGE_WIDTH * dodge * (direction % 2 - 1) * (direction - 1);
 
 	let arrowAngle = -1 * Math.PI / 2 * direction;
 
 	ctx.strokeStyle = getColorValueArrow(color);
-	ctx.lineWidth = lineThickness;
+	ctx.lineWidth = LINE_THICKNESS;
 
 	// arrow shaft
 	ctx.beginPath();
@@ -824,12 +824,12 @@ function drawMoveArrow(start, end, color, direction, isStartFull, isDestFull, do
 	// arrow head
 	ctx.beginPath();
 	ctx.moveTo(x2,y2);
-	ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * arrowSize, y2 - Math.sin(arrowAngle + Math.PI / 4) * arrowSize);
+	ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle + Math.PI / 4) * ARROW_SIZE);
 	ctx.stroke();
 
 	ctx.beginPath();
 	ctx.moveTo(x2,y2);
-	ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * arrowSize, y2 - Math.sin(arrowAngle - Math.PI / 4) * arrowSize)
+	ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * ARROW_SIZE)
 	ctx.stroke();
 }
 
@@ -848,6 +848,7 @@ function hasFutureMoves(robotColor, index) {
 function addCellLineCount(cellArray, startPoint, endPoint, direction) {
 	let currPoint = startPoint;
 	let directionUnit = Point.fromDirection(direction);
+	cellArray[currPoint.y * game.board.height + currPoint.x]++;
 
 	do {
 		currPoint = currPoint.add(directionUnit);
@@ -908,6 +909,7 @@ function updateDemo(timestamp) {
 			addCellLineCount(cellVCount, startPosition, endPosition, state.direction);
 			dodge = findMaxLineCount(cellVCount, startPosition, endPosition, state.direction) - 1;
 		}
+
 
 		drawMoveArrow(startPosition, endPosition, color, state.direction, startFull, destFull, dodge);
 		robots[color].warpTo(endPosition);
@@ -1097,15 +1099,19 @@ function processSetState(args) {
 	}
 
 	if (game.state == State.Demo) {
-		const demoStepSpeed = 1000;
-		const warmUpTime = 1; // number of steps before the animation starts
-		const lingerTime = 5; // number of steps after demo is finished before it restarts
+		const DEMO_STEP_SPEED = 1000;
+		const WARM_UP_TIME = 1; // number of steps before the animation starts
+		const LINGER_TIME = 5; // number of steps after demo is finished before it restarts
 
 		game.resetRobotPositions();
 
+		let start = new Date();
+
 		stateSequence = solveBoard(game.board, game.currentGoal, game.robots, null);
-		demoStep = -1 * warmUpTime;
-		demoInterval = window.setInterval(function() { demoStep = (demoStep + 1 + warmUpTime) % (stateSequence.length + lingerTime) - warmUpTime;}, demoStepSpeed);
+		console.log("Solution found in " + (new Date() - start)/1000 + " seconds");
+
+		demoStep = -1 * WARM_UP_TIME;
+		demoInterval = window.setInterval(function() { demoStep = (demoStep + 1 + WARM_UP_TIME) % (stateSequence.length + LINGER_TIME) - WARM_UP_TIME;}, DEMO_STEP_SPEED);
 	}
 
 	selection.clearSelection();
