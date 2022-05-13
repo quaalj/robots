@@ -100,6 +100,10 @@ const TILE_SIZE = 32;
 const ROBOT_TWEEN_SPEED = 32.0;
 const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 
+// length of shortest path is sent by message from server
+// don't want people cheating...
+const QUIET_MODE = false;
+
 function getSymbolImage(symbol) {
 	if (symbol == Symbol.Star) {
 		return document.getElementById('star');
@@ -342,6 +346,27 @@ class Robot {
 	}
 }
 
+// Globals
+var game = new Game();
+var robots = [];
+
+var selection = new ActiveSelection(game);
+var canvas = document.getElementById("MainCanvas");
+var moveSequence = [];
+var redoStack = [];
+var moveCount = null;
+
+var demoAvailable = false;
+var arrowSequence = [];
+
+var playerId = null;
+var currentSolvingPlayer = null;
+
+var serverTimeDelta = 0;
+var serverBidStartTime = null;
+
+var socket = null;
+
 class MoveArrow {
 	static cellHCount = Array(game.board.width * game.board.height).fill(0);
 	static cellVCount = Array(game.board.width * game.board.height).fill(0);
@@ -517,27 +542,6 @@ class MoveArrow {
 		this.tweenAlpha = Math.min(this.tweenAlpha + (deltaTime * ROBOT_TWEEN_SPEED) / dist, 1.0);
 	}
 }
-
-// Globals
-var game = new Game();
-var robots = [];
-
-var selection = new ActiveSelection(game);
-var canvas = document.getElementById("MainCanvas");
-var moveSequence = [];
-var redoStack = [];
-var moveCount = null;
-
-var demoAvailable = false;
-var arrowSequence = [];
-
-var playerId = null;
-var currentSolvingPlayer = null;
-
-var serverTimeDelta = 0;
-var serverBidStartTime = null;
-
-var socket = null;
 
 function clearCanvas(canvas) {
 	let ctx = canvas.getContext("2d");
@@ -1000,7 +1004,10 @@ function onServerMessageReceived(data) {
 }
 
 function doServerCommand(command, args) {
-	console.log(`${command} ${args}`);
+	if(!QUIET_MODE)
+	{
+		console.log(`${command} ${args}`);
+	}
 
 	if (command == 'GIVE_TOKENS') {
 		processGiveTokens(args);
@@ -1303,7 +1310,10 @@ window.onload = function() {
 	}
 
 	socket.onmessage = function(event) {
-		console.log(`Message = ${event.data}`);
+		if(!QUIET_MODE)
+		{
+			console.log(`Message = ${event.data}`);
+		}
 		onServerMessageReceived(event.data);
 	};
 

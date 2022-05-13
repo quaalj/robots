@@ -22,7 +22,7 @@ parentPort.on("message", function(e) {
 
     let stateSequence = solveBoard(board, goal, robots, null);
     let msg = {'solution' : compactSolution(stateSequence), 'goalColor' : goal.color, 'goalSymbol' : goal.symbol, 'robots':robots, 'seed' : seed};
-
+    console.log("Worker found solution");
     parentPort.postMessage(msg);
     parentPort.close();
 });

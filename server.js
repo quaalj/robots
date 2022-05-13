@@ -265,7 +265,11 @@ function syncGame(client) {
 	for (let i = 0; i < game.playerBids.length; ++i) {
 		commands.push(makePlayerBidCommand(game.playerBids[i].playerId));
 	}
-	
+
+	if(demoSequence) {
+		commands.push(makeDemoReadyCommand());
+	}
+
 	if (game.state == State.Bid) {
 		if (game.timerStartTime != null) {
 			commands.push(makeStartTimerCommand());
@@ -274,6 +278,8 @@ function syncGame(client) {
 		if (game.timerStartTime != null) {
 			commands.push(makeStartSolveCommand());
 		}
+	} else if (game.state == State.Demo) {
+		commands.push(makeRobotFinalPositionCommand());
 	}
 
 	client.socket.send(commands.join('\n'));
@@ -569,9 +575,6 @@ function doCommand(client, command, args) {
 		let playerJoinedCommand = makePlayerJoinedCommand(client.playerId, client.cachedName);
 		let commands = [playerJoinedCommand, makeAssignPlayerCommand(client.playerId)];
 
-		if(demoSequence) {
-			commands.push(makeDemoReadyCommand());
-		}
 		client.socket.send(commands.join('\n'));
 		
 		sendAllExcept(playerJoinedCommand, client.key);
@@ -740,7 +743,7 @@ function isSolutionStale(seed, goal, robots) {
 	}
 
 	for(let i in robots) {
-		if (!robots[i].equals(game.robots[i])) {
+		if (!robots[i].equals(game.originalRobotConfig[i])) {
 			stale = true;
 		}
 	}
