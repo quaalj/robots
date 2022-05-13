@@ -785,12 +785,14 @@ window.addEventListener("keydown", function(event) {
 
 function clearMoveArrows() {
 	MoveArrow.clearCellCounts();
+	MoveArrow.clearFinalPositions();
 	arrowSequence = [];
 }
 
 class MoveArrow {
 	static cellHCount = Array(game.board.width * game.board.height).fill(0);
 	static cellVCount = Array(game.board.width * game.board.height).fill(0);
+	static finalRobotPositions = [];
 
 	constructor(start, end, color, game) {
 		this.startPoint = start;
@@ -800,15 +802,20 @@ class MoveArrow {
 
 		this.updateCellCount();
 		this.dodge = this.findMaxLineCount() - 1;
-		console.log("New Move Arrow!")
 	}
 
 	static clearCellCounts() {
-		console.log("clearing...");
 		MoveArrow.cellHCount = Array(game.board.width * game.board.height).fill(0);
 		MoveArrow.cellVCount = Array(game.board.width * game.board.height).fill(0);
 	}
 
+	static setFinalPosition(robotID, x, y) {
+		MoveArrow.finalRobotPositions[robotID] = new Point(x, y);
+	}
+
+	static clearFinalPositions() {
+		MoveArrow.finalRobotPositions = [];
+	}
 	static drawCellCounts() {
 		for(let y = 0; y < game.board.height; y++) {
 			for(let x = 0; x < game.board.width; x++) {
@@ -828,7 +835,8 @@ class MoveArrow {
 		}
 
 		for(let i in this.game.robots) {
-			if(cell.equals(this.game.robots[i])) {
+
+			if(cell.equals(MoveArrow.finalRobotPositions[i])) {
 				result = true;
 			}
 		}
@@ -864,7 +872,6 @@ class MoveArrow {
 		do {
 			currPoint = currPoint.add(direction);
 			cellArray[currPoint.y * game.board.height + currPoint.x]++;
-			console.log(i++ + ":" + cellArray[currPoint.y * game.board.height + currPoint.x]);
 		} while(!currPoint.equals(this.endPoint))
 	}
 
@@ -1020,6 +1027,8 @@ function doServerCommand(command, args) {
 		processPlayerVote(args);
 	} else if (command == 'DEMO_READY') {
 		demoAvailable = args[0];
+	} else if (command == 'FINAL_POSITION') {
+		processFinalPosition(args);
 	}
 }
 
@@ -1066,6 +1075,15 @@ function processGiveTokens(args) {
 
 	$(`#${makePlayerDivId(targetPlayerId)} > .player_score`).text(`Score: ${player.tokens.length}`);
 	updateTokenCount();
+}
+
+function processFinalPosition(args) {
+	let tok = args.toString().split(",");
+	let numPositions = intdiv(tok.length, 3);
+
+	for(let i = 0; i < numPositions; i++) {
+		MoveArrow.setFinalPosition(tok[i * 3], tok[i * 3 + 1], tok[i * 3 + 2]);
+	}
 }
 
 function updateTokenCount() {

@@ -366,9 +366,12 @@ function makeDemoReadyCommand() {
 
 function makeRobotFinalPositionCommand() {
 	let str = 'FINAL_POSITION'
-	let finalPositions = game.originalRobotConfig;
 
+	for(let i in game.robots) {
+		str += ` ${i} ${game.robots[i].x} ${game.robots[i].y}`;
+	}
 
+	return str;
 }
 
 function updateSolveState() {
@@ -511,8 +514,18 @@ function demoNextStep() {
 
 function startDemo() {
 	game.startDemoState();
-	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state)];
+
+	for(let i in demoSequence) {
+		let robotID = demoSequence[i].color;
+		let dir = demoSequence[i].direction;
+
+		game.moveRobot(robotID, dir);
+	}
+
+	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state), makeRobotFinalPositionCommand()];
 	sendAll(command.join('\n'));
+
+	game.resetRobotPositions();
 
 	demoStep = -1 * DEMO_WARM_UP_TIME;
 	demoInterval = setInterval( demoNextStep, DEMO_STEP_SPEED);
