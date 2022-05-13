@@ -361,7 +361,14 @@ function makeStartSolveCommand() {
 }
 
 function makeDemoReadyCommand() {
-	return `DEMO_READY`;
+	return `DEMO_READY ${demoSequence.length}`;
+}
+
+function makeRobotFinalPositionCommand() {
+	let str = 'FINAL_POSITION'
+	let finalPositions = game.originalRobotConfig;
+
+
 }
 
 function updateSolveState() {
@@ -507,9 +514,8 @@ function startDemo() {
 	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state)];
 	sendAll(command.join('\n'));
 
-	demoStep = -1;
+	demoStep = -1 * DEMO_WARM_UP_TIME;
 	demoInterval = setInterval( demoNextStep, DEMO_STEP_SPEED);
-
 }
 
 function endDemo() {
@@ -725,23 +731,6 @@ function isSolutionStale(seed, goal, robots) {
 
 	return stale;
 }
-
-/*solutionWorker.on("message", function(msg) {
-	let solutionGoal = new Goal(msg.goalColor, msg.goalSymbol);
-	let solutionRobots = [];
-
-	for(let i in msg.robots) {
-		solutionRobots[i] = new Point(msg.robots[i].x, msg.robots[i].y);
-	}
-
-	if(!isSolutionStale(msg.seed, solutionGoal, solutionRobots)) {
-		solutionSequence = msg.solution;
-		sendAll(makeDemoReadyCommand());
-	}
-	console.log(solutionSequence)
-}); */
-
-
 
 //ToDo: When game resets after winner, need to call workOnSolution
 workOnSolution();

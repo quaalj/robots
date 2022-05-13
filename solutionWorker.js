@@ -19,10 +19,10 @@ parentPort.on("message", function(e) {
     for(let i in robots) {
         robots[i] = new Point(robots[i].x, robots[i].y);
     }
-console.log("working...");
+
     let stateSequence = solveBoard(board, goal, robots, null);
     let msg = {'solution' : compactSolution(stateSequence), 'goalColor' : goal.color, 'goalSymbol' : goal.symbol, 'robots':robots, 'seed' : seed};
-    console.log("solution ready");
+
     parentPort.postMessage(msg);
     parentPort.close();
 });
