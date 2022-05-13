@@ -342,6 +342,182 @@ class Robot {
 	}
 }
 
+class MoveArrow {
+	static cellHCount = Array(game.board.width * game.board.height).fill(0);
+	static cellVCount = Array(game.board.width * game.board.height).fill(0);
+	static finalRobotPositions = [];
+
+	constructor(start, end, color, game) {
+		this.startPoint = start;
+		this.endPoint = end;
+		this.color = color;
+		this.game = game;
+		this.tweenAlpha = 0;
+
+		this.updateCellCount();
+		this.dodge = this.findMaxLineCount() - 1;
+	}
+
+	static clearCellCounts() {
+		MoveArrow.cellHCount = Array(game.board.width * game.board.height).fill(0);
+		MoveArrow.cellVCount = Array(game.board.width * game.board.height).fill(0);
+	}
+
+	static setFinalPosition(robotID, x, y) {
+		MoveArrow.finalRobotPositions[robotID] = new Point(x, y);
+	}
+
+	static clearFinalPositions() {
+		MoveArrow.finalRobotPositions = [];
+	}
+	static drawCellCounts() {
+		for(let y = 0; y < game.board.height; y++) {
+			for(let x = 0; x < game.board.width; x++) {
+				let ctx = canvas.getContext("2d");
+
+				let str = Math.max(MoveArrow.cellHCount[y * game.board.height + x], MoveArrow.cellVCount[y * game.board.height + x])
+				ctx.fillText(str, (x + 0.5) * TILE_SIZE, (y + 0.5) * TILE_SIZE);
+			}
+		}
+	}
+
+	isCellFull(cell) {
+		let result = false;
+
+		if(this.game.board.getCell(cell).getGoal()) {
+			result = true;
+		}
+
+		for(let i in this.game.robots) {
+
+			if(cell.equals(MoveArrow.finalRobotPositions[i])) {
+				result = true;
+			}
+		}
+
+		return result;
+	}
+
+	getDirection() {
+		return this.endPoint.sub(this.startPoint).getDirection();
+	}
+
+	getCellArray()
+	{
+		let direction = this.getDirection();
+
+		if (direction == Direction.Left || direction == Direction.Right)
+		{
+			return MoveArrow.cellHCount;
+		}
+		else
+		{
+			return MoveArrow.cellVCount;
+		}
+	}
+
+	updateCellCount() {
+		let currPoint = this.startPoint;
+		let direction = Point.fromDirection(this.getDirection());
+		let cellArray = this.getCellArray();
+
+		cellArray[currPoint.y * game.board.height + currPoint.x]++;
+
+		do {
+			currPoint = currPoint.add(direction);
+			cellArray[currPoint.y * game.board.height + currPoint.x]++;
+		} while(!currPoint.equals(this.endPoint))
+	}
+
+	findMaxLineCount() {
+		let currPoint = this.startPoint;
+		let cellArray = this.getCellArray();
+
+		let max = cellArray[this.startPoint.y * game.board.height + this.startPoint.x];
+		let directionUnit = Point.fromDirection(this.getDirection());
+
+		do {
+			currPoint = currPoint.add(directionUnit);
+			let curr = cellArray[currPoint.y * game.board.height + currPoint.x];
+
+			if(curr > max) {
+				max = curr;
+			}
+		} while(!currPoint.equals(this.endPoint))
+
+		return max;
+	}
+
+	draw(canvas) {
+		const ARROW_SIZE = 6;
+		const PADDING = 5;
+		const LINE_THICKNESS = 1.5;
+		const DODGE_WIDTH = 4;
+
+		let ctx = canvas.getContext("2d");
+		let direction = this.getDirection();
+		let offset = TILE_SIZE / 2;
+
+		let isStartFull = this.isCellFull(this.startPoint);
+		let isDestFull = this.isCellFull(this.endPoint);
+
+		let fullStartCellAdjustment = isStartFull ? offset : PADDING;
+		let fullDestCellAdjustment = isDestFull ? offset : PADDING;
+
+		// place start and end points in center of tile
+		let x1 = this.startPoint.x * TILE_SIZE + offset;
+		let y1 = this.startPoint.y * TILE_SIZE + offset;
+		let x2 = this.endPoint.x * TILE_SIZE + offset;
+		let y2 = this.endPoint.y * TILE_SIZE + offset;
+
+		// shrink arrow length if start or destination cell is full
+		x1 = x1 - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+		y1 = y1 + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
+		x2 = x2 + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+		y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
+
+		// displace arrow to the side if cells in the arrow's path already contain arrows
+		x1 += DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+		y1 += DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+		x2 += DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+		y2 += DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+
+		// for some nice arrow tweening
+		if(direction == Direction.Left || direction == Direction.Right) {
+			x2 = x1 + (x2 - x1) * this.tweenAlpha;
+		} else {
+			y2 = y1 + (y2 - y1) * this.tweenAlpha;
+		}
+
+		let arrowAngle = -1 * Math.PI / 2 * direction;
+
+		ctx.strokeStyle = getColorValueArrow(this.color);
+		ctx.lineWidth = LINE_THICKNESS;
+
+		// arrow shaft
+		ctx.beginPath();
+		ctx.moveTo(x1, y1);
+		ctx.lineTo(x2, y2);
+		ctx.stroke();
+
+		// arrow head
+		ctx.beginPath();
+		ctx.moveTo(x2,y2);
+		ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle + Math.PI / 4) * ARROW_SIZE);
+		ctx.stroke();
+
+		ctx.beginPath();
+		ctx.moveTo(x2,y2);
+		ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * ARROW_SIZE)
+		ctx.stroke();
+	}
+
+	update(deltaTime) {
+		let dist = this.startPoint.lInfDist(this.endPoint);
+		this.tweenAlpha = Math.min(this.tweenAlpha + (deltaTime * ROBOT_TWEEN_SPEED) / dist, 1.0);
+	}
+}
+
 // Globals
 var game = new Game();
 var robots = [];
@@ -351,9 +527,9 @@ var canvas = document.getElementById("MainCanvas");
 var moveSequence = [];
 var redoStack = [];
 var moveCount = null;
-var stateSequence = [];
-// var demoInterval;
+
 var demoAvailable = false;
+var arrowSequence = [];
 
 var playerId = null;
 var currentSolvingPlayer = null;
@@ -362,9 +538,6 @@ var serverTimeDelta = 0;
 var serverBidStartTime = null;
 
 var socket = null;
-
-var arrowSequence = [];
-
 
 function clearCanvas(canvas) {
 	let ctx = canvas.getContext("2d");
@@ -789,170 +962,6 @@ function clearMoveArrows() {
 	arrowSequence = [];
 }
 
-class MoveArrow {
-	static cellHCount = Array(game.board.width * game.board.height).fill(0);
-	static cellVCount = Array(game.board.width * game.board.height).fill(0);
-	static finalRobotPositions = [];
-
-	constructor(start, end, color, game) {
-		this.startPoint = start;
-		this.endPoint = end;
-		this.color = color;
-		this.game = game;
-
-		this.updateCellCount();
-		this.dodge = this.findMaxLineCount() - 1;
-	}
-
-	static clearCellCounts() {
-		MoveArrow.cellHCount = Array(game.board.width * game.board.height).fill(0);
-		MoveArrow.cellVCount = Array(game.board.width * game.board.height).fill(0);
-	}
-
-	static setFinalPosition(robotID, x, y) {
-		MoveArrow.finalRobotPositions[robotID] = new Point(x, y);
-	}
-
-	static clearFinalPositions() {
-		MoveArrow.finalRobotPositions = [];
-	}
-	static drawCellCounts() {
-		for(let y = 0; y < game.board.height; y++) {
-			for(let x = 0; x < game.board.width; x++) {
-				let ctx = canvas.getContext("2d");
-
-				let str = Math.max(MoveArrow.cellHCount[y * game.board.height + x], MoveArrow.cellVCount[y * game.board.height + x])
-				ctx.fillText(str, (x + 0.5) * TILE_SIZE, (y + 0.5) * TILE_SIZE);
-			}
-		}
-	}
-
-	isCellFull(cell) {
-		let result = false;
-
-		if(this.game.board.getCell(cell).getGoal()) {
-			result = true;
-		}
-
-		for(let i in this.game.robots) {
-
-			if(cell.equals(MoveArrow.finalRobotPositions[i])) {
-				result = true;
-			}
-		}
-
-		return result;
-	}
-
-	getDirection() {
-		return this.endPoint.sub(this.startPoint).getDirection();
-	}
-
-	getCellArray()
-	{
-		let direction = this.getDirection();
-
-		if (direction == Direction.Left || direction == Direction.Right)
-		{
-			return MoveArrow.cellHCount;
-		}
-		else
-		{
-			return MoveArrow.cellVCount;
-		}
-	}
-
-	updateCellCount() {
-		let currPoint = this.startPoint;
-		let direction = Point.fromDirection(this.getDirection());
-		let cellArray = this.getCellArray();
-
-		cellArray[currPoint.y * game.board.height + currPoint.x]++;
-		let i = 0;
-		do {
-			currPoint = currPoint.add(direction);
-			cellArray[currPoint.y * game.board.height + currPoint.x]++;
-		} while(!currPoint.equals(this.endPoint))
-	}
-
-	findMaxLineCount() {
-		let currPoint = this.startPoint;
-		let cellArray = this.getCellArray();
-
-		let max = cellArray[this.startPoint.y * game.board.height + this.startPoint.x];
-		let directionUnit = Point.fromDirection(this.getDirection());
-
-		do {
-			currPoint = currPoint.add(directionUnit);
-			let curr = cellArray[currPoint.y * game.board.height + currPoint.x];
-
-			if(curr > max) {
-				max = curr;
-			}
-		} while(!currPoint.equals(this.endPoint))
-
-		return max;
-	}
-
-	draw(canvas) {
-		const ARROW_SIZE = 6;
-		const PADDING = 5;
-		const LINE_THICKNESS = 1.5;
-		const DODGE_WIDTH = 4;
-
-		let ctx = canvas.getContext("2d");
-		let direction = this.getDirection();
-		let offset = TILE_SIZE / 2;
-
-		let isStartFull = this.isCellFull(this.startPoint);
-		let isDestFull = this.isCellFull(this.endPoint);
-
-		let fullStartCellAdjustment = isStartFull ? offset : PADDING;
-		let fullDestCellAdjustment = isDestFull ? offset : PADDING;
-
-		// place start and end points in center of tile
-		let x1 = this.startPoint.x * TILE_SIZE + offset;
-		let y1 = this.startPoint.y * TILE_SIZE + offset;
-		let x2 = this.endPoint.x * TILE_SIZE + offset;
-		let y2 = this.endPoint.y * TILE_SIZE + offset;
-
-		// shrink arrow length if start or destination cell is full
-		x1 = x1 - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
-		y1 = y1 + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
-		x2 = x2 + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
-		y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
-
-		// displace arrow to the side if cells in the arrow's path already contain arrows
-		x1 += DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
-		y1 += DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
-		x2 += DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
-		y2 += DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
-
-		let arrowAngle = -1 * Math.PI / 2 * direction;
-
-		ctx.strokeStyle = getColorValueArrow(this.color);
-		ctx.lineWidth = LINE_THICKNESS;
-
-		// arrow shaft
-		ctx.beginPath();
-		ctx.moveTo(x1, y1);
-		ctx.lineTo(x2, y2);
-		ctx.stroke();
-
-		// arrow head
-		ctx.beginPath();
-		ctx.moveTo(x2,y2);
-		ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle + Math.PI / 4) * ARROW_SIZE);
-		ctx.stroke();
-
-		ctx.beginPath();
-		ctx.moveTo(x2,y2);
-		ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * ARROW_SIZE)
-		ctx.stroke();
-	}
-
-}
-
 let lastLoop = 0;
 function loop(timestamp) {
 	let deltaTime = (timestamp - lastLoop) / 1000.0;
@@ -970,6 +979,7 @@ function loop(timestamp) {
 		for(let i in arrowSequence) {
 			arrowSequence[i].draw(canvas);
 		}
+		arrowSequence[arrowSequence.length - 1]?.update(deltaTime);
 	}
 
 	window.requestAnimationFrame(loop);

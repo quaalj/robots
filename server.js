@@ -42,6 +42,10 @@ var demoSequence = null;
 var demoStep = -1;
 var demoInterval = null;
 
+const DEMO_STEP_SPEED = 1000;
+const DEMO_WARM_UP_TIME = 1; // number of steps before the animation starts
+const DEMO_LINGER_TIME = 5; // number of steps after demo is finished before it restarts
+
 class Client {
 	constructor(key) {
 		this.playerId = null;
@@ -489,10 +493,6 @@ function nextRound() {
 	endDemo();
 }
 
-const DEMO_STEP_SPEED = 1000;
-const DEMO_WARM_UP_TIME = 1; // number of steps before the animation starts
-const DEMO_LINGER_TIME = 5; // number of steps after demo is finished before it restarts
-
 function demoNextStep() {
 	demoStep = (demoStep + 1 + DEMO_WARM_UP_TIME) % (demoSequence.length + DEMO_LINGER_TIME) - DEMO_WARM_UP_TIME;
 
@@ -515,6 +515,8 @@ function demoNextStep() {
 function startDemo() {
 	game.startDemoState();
 
+	// run through the entire solution to get the final robot positions
+	// to send to the client so the arrows can look nice
 	for(let i in demoSequence) {
 		let robotID = demoSequence[i].color;
 		let dir = demoSequence[i].direction;
@@ -528,12 +530,13 @@ function startDemo() {
 	game.resetRobotPositions();
 
 	demoStep = -1 * DEMO_WARM_UP_TIME;
-	demoInterval = setInterval( demoNextStep, DEMO_STEP_SPEED);
+	demoInterval = setInterval(demoNextStep, DEMO_STEP_SPEED);
 }
 
 function endDemo() {
 	clearInterval(demoInterval);
 }
+
 function executeVote(vote) {
 	console.log(`Majority has voted ${vote}`);
 	
