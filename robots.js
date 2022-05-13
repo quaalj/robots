@@ -109,7 +109,7 @@ export class RobotMove {
 	}
 	
 	toString() {
-		return `(${this.position},${dirToString(this.direction)})`
+		return `(${this.position},${Direction["str"](this.direction)})`
 	}
 }
 

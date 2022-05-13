@@ -353,6 +353,7 @@ var redoStack = [];
 var moveCount = null;
 var stateSequence = [];
 var demoInterval;
+var demoAvailable = false;
 
 var playerId = null;
 var currentSolvingPlayer = null;
@@ -361,6 +362,7 @@ var serverTimeDelta = 0;
 var serverBidStartTime = null;
 
 var socket = null;
+
 
 function clearCanvas(canvas) {
 	let ctx = canvas.getContext("2d");
@@ -371,12 +373,10 @@ function drawGame(game, canvas, offset = new Point(0, 0)) {
 	clearCanvas(canvas);
 	drawBoard(game.board, canvas, offset);
 
-	if(game.state != State.Demo)
+
+	for (let i = 0; i < robots.length; ++i)
 	{
-		for (let i = 0; i < robots.length; ++i)
-		{
-			robots[i].draw(canvas, offset);
-		}
+		robots[i].draw(canvas, offset);
 	}
 	
 	if (selection.hasSelection()) {
@@ -484,7 +484,7 @@ function updateUI() {
 		document.getElementById('gentleman').disabled = player.vote == 'SKIPBID';
 		document.getElementById('next').disabled = player.vote == 'NEXT';
 		document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
-		document.getElementById('demo').disabled = player.vote == 'DEMO';
+		document.getElementById('demo').disabled = (player.vote == 'DEMO' || !demoAvailable);
 		
 		document.getElementById('name').textContent = "" + player.name;
 		document.getElementById('score').textContent = "" + player.getScore();
@@ -848,8 +848,8 @@ function hasFutureMoves(robotColor, index) {
 function addCellLineCount(cellArray, startPoint, endPoint, direction) {
 	let currPoint = startPoint;
 	let directionUnit = Point.fromDirection(direction);
-	cellArray[currPoint.y * game.board.height + currPoint.x]++;
 
+	cellArray[currPoint.y * game.board.height + currPoint.x]++;
 	do {
 		currPoint = currPoint.add(directionUnit);
 		cellArray[currPoint.y * game.board.height + currPoint.x]++;
@@ -869,7 +869,6 @@ function findMaxLineCount(cellArray, startPoint, endPoint, direction) {
 			max = curr;
 		}
 	} while(!currPoint.equals(endPoint))
-
 
 	return max;
 }
@@ -947,7 +946,7 @@ function loop(timestamp) {
 	drawGame(game, canvas);
 
 	if(game.state == State.Demo) {
-		updateDemo(timestamp)
+		//updateDemo(timestamp)
 	}
 
 	window.requestAnimationFrame(loop);
@@ -1003,6 +1002,8 @@ function doServerCommand(command, args) {
 		processStartSolve(args);
 	} else if (command == 'PLAYER_VOTE') {
 		processPlayerVote(args);
+	} else if (command == 'DEMO_READY') {
+		demoAvailable = true;
 	}
 }
 
@@ -1106,12 +1107,13 @@ function processSetState(args) {
 		game.resetRobotPositions();
 
 		let start = new Date();
-
-		stateSequence = solveBoard(game.board, game.currentGoal, game.robots, null);
+		//stateSequence = solveBoard(game.board, game.currentGoal, game.robots, null);
+		stateSequence = [];
 		console.log("Solution found in " + (new Date() - start)/1000 + " seconds");
 
-		demoStep = -1 * WARM_UP_TIME;
-		demoInterval = window.setInterval(function() { demoStep = (demoStep + 1 + WARM_UP_TIME) % (stateSequence.length + LINGER_TIME) - WARM_UP_TIME;}, DEMO_STEP_SPEED);
+		//demoStep = -1 * WARM_UP_TIME;
+		//demoInterval = window.setInterval(function() { demoStep = (demoStep + 1 + WARM_UP_TIME) % (stateSequence.length + LINGER_TIME) - WARM_UP_TIME;}, DEMO_STEP_SPEED);
+
 	}
 
 	selection.clearSelection();
@@ -1207,6 +1209,8 @@ function processRobotReset(args) {
 	if (args.length % 2 == 1) {
 		moveCount = parseInt(args[args.length - 1]);
 	}
+
+	demoAvailable = false;
 }
 
 function processRobotMove(args) {
