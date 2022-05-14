@@ -110,6 +110,10 @@ export function intdiv(x, y) {
 	return ~~(x / y);
 }
 
+export function isupper(c) {
+	return c == c.toUpperCase();
+}
+
 export function makeEnum(values, functions = {}) {
 	let dict = functions;
 	let allValues = [];
@@ -151,6 +155,36 @@ export const Direction = makeEnum(['Left', 'Up', 'Right', 'Down'], {
 		}
 		return (direction + amount) % 4;
 	},
+	bumperSlant(direction, slant) {
+		if (slant) {
+			if (direction == Direction.Up) {
+				return Direction.Right;
+			}
+			if (direction == Direction.Right) {
+				return Direction.Up;
+			}
+			if (direction == Direction.Left) {
+				return Direction.Down;
+			}
+			if (direction == Direction.Down) {
+				return Direction.Left;
+			}
+		} else {
+			if (direction == Direction.Up) {
+				return Direction.Left;
+			}
+			if (direction == Direction.Left) {
+				return Direction.Up;
+			}
+			if (direction == Direction.Right) {
+				return Direction.Down;
+			}
+			if (direction == Direction.Down) {
+				return Direction.Right;
+			}
+		}
+		return null;
+	}
 });
 
 export class Point {

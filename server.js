@@ -310,9 +310,17 @@ function makeRobotMoveAllCommand() {
 	return makeRobotAllCommand('ROBOT_MOVEALL', game.getRobotPositions());
 }
 
-function makeRobotMoveCommand(robotId) {
+function makeRobotMoveCommand(robotId, moves = null) {
 	let pos = game.robots[robotId];
-	let command = `ROBOT_MOVE ${robotId} ${pos.x} ${pos.y}`;
+	if (moves == null) {
+		moves = [pos];
+	}
+
+	let command = `ROBOT_MOVE ${robotId}`;
+	for (let i = 0; i < moves.length; ++i) {
+		command += ` ${moves[i].x} ${moves[i].y}`;
+	}
+	
 	if (game.state == State.Solve) {
 		command += ` ${moveSequence.length}`;
 	}
@@ -553,8 +561,9 @@ function doCommand(client, command, args) {
 			if (!isFree) {
 				moveSequence.push(new RobotMove(game.robots[robotId], direction, null, robotId));
 			}
-			game.moveRobot(robotId, direction);
-			let commands = [makeRobotMoveCommand(robotId)];
+			let outMoves = []
+			game.moveRobot(robotId, direction, outMoves);
+			let commands = [makeRobotMoveCommand(robotId, outMoves.slice(1))];
 			
 			if (game.state == State.Solve && game.getSolvingPlayer() == client.playerId) {
 				let currentBid = game.playerBids[game.currentSolveBid];

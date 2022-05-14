@@ -1,4 +1,4 @@
-import { intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf, isHexDigit } from './util.js';
+import { isupper, intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf, isHexDigit } from './util.js';
 
 /// Global Contants
 
@@ -72,6 +72,92 @@ export class Goal {
 	}
 }
 
+export class Bumper {
+	constructor(color = null, slant = false) {
+		Object.defineProperty(this, 'color', { 'value': color });
+		Object.defineProperty(this, 'slant', { 'value': slant });
+	}
+
+	static getColorMap() {
+		let colorMap = new Array(Color.allValues.length);
+		colorMap[Color.Yellow] = 'y';
+		colorMap[Color.Red] = 'r';
+		colorMap[Color.Blue] ='u';
+		colorMap[Color.Green] = 'g';
+		return colorMap;
+	}
+
+	static getReverseColorMap() {
+		let colorMap = Bumper.getColorMap();
+		let obj = {};
+		for (let i = 0; i < colorMap.length; ++i) {
+			obj[colorMap[i]] = i;
+		}
+		return obj;
+	}
+
+	static fromInt(value) {
+		let slant = false;
+		if (value >= Color.allValues.length) {
+			value -= Color.allValues.length;
+			slant = true;
+		}
+
+		if (value >= 0 && value < Color.allValues.length) {
+			return new Bumper(value, slant);
+		}
+		return null;
+	}
+
+	toInt() {
+		let value = this.color;
+		if (this.slant) {
+			value += Color.allValues.length;
+		}
+		return value;
+	}
+
+	static fromCharacter(c) {
+		let colorMap = Bumper.getReverseColorMap();
+
+		for (let i = 0; i < Color.allValues.length; ++i) {
+			let color = colorMap[c.toLowerCase()];
+			if (color !== undefined) {
+				return new Bumper(color, isupper(c));
+			}
+		}
+		return null;
+	}
+
+	toCharacter() {
+		let colorMap = Bumper.getColorMap();
+		let ch = colorMap[this.color];
+		if (this.slant) {
+			ch = ch.toUpperCase();
+		}
+		return ch;
+	}
+
+	equals(other) {
+		if (other == null) {
+			return false;
+		}
+		return this.color == other.color && this.slant == other.slant;
+	}
+
+	rotate90(iterations = 1) {
+		if (iterations % 2 == 1) {
+			return new Bumper(this.color, !this.slant);
+		} else {
+			return this;
+		}
+	}
+
+	toString() {
+		return Color.str(this.color) + (this.slant ? " /" : " \\")
+	}
+}
+
 export class RobotState {
 	constructor(robots, warp = false, depth = 0) {
 		if (warp) {
@@ -114,9 +200,10 @@ export class RobotMove {
 }
 
 export class Cell {
-	constructor(goal = null) {
+	constructor(goal = null, bumper = null) {
 		Object.defineProperty(this, 'fences', { 'value': [false, false, false, false] });
 		this.goal = goal;
+		this.bumper = bumper;
 	}
 
 	static parseCell(s) {
@@ -127,6 +214,7 @@ export class Cell {
 
 	fromString(s) {
 		this.goal = Goal.fromCharacter(s[0]);
+		this.bumper = Bumper.fromCharacter(s[0]);
 		let fence = 0;
 		if (s[1] != ' ') {
 			fence = parseInt(s[1], 16);
@@ -141,6 +229,8 @@ export class Cell {
 		let result = '';
 		if (this.goal != null) {
 			result += this.goal.toCharacter();
+		} else if (this.bumper != null) {
+			result += this.bumper.toCharacter();
 		} else {
 			result += ' ';
 		}
@@ -172,6 +262,14 @@ export class Cell {
 	setGoal(goal) {
 		this.goal = goal;
 	}
+
+	getBumper() {
+		return this.bumper;
+	}
+	
+	setBumper(bumper) {
+		this.bumper = bumper;
+	}
 	
 	getFence(direction) {
 		return this.fences[direction];
@@ -201,7 +299,7 @@ export class Cell {
 	}
 	
 	clone(rotation = 0) {
-		let cell = new Cell(this.goal);
+		let cell = new Cell(this.goal, this.bumper == null ? null : this.bumper.rotate90(rotation));
 		Direction.allValues.forEach(function(i) {
 			cell.setFence(Direction.rotate90(i, rotation), this.getFence(i));
 		}, this);
@@ -423,34 +521,63 @@ export class Board {
 		return result;
 	}
 	
-	doMove(robots, robotIdx, moveDir) {
+	doMove(robots, robotIdx, moveDir, outList = null) {
 		let blocked = false;
 		let robotPos = robots[robotIdx];
 		let delta = Point.fromDirection(moveDir);
 		
+		if (outList != null) {
+			outList.push(robotPos);
+		}
+
 		while (!blocked) {
 			let nextPos = robotPos.add(delta);
 			
-			console.assert(!nextPos.equals(robots[robotIdx]), "Robot position looped somehow");
-			
 			if (nextPos.equals(robots[robotIdx])) {
-				return nextPos;
+				return robots[robotIdx];
 			}
 			
-			if (this.isMoveBlocked(robotPos, nextPos)) {
-				return robotPos;
+			blocked = this.isMoveBlocked(robotPos, nextPos);
+			if (!blocked) {
+				for (let i = 0; i < robots.length; ++i) {
+					if (robots[i].equals(nextPos)) {
+						// TODO: maybe implement motion-transfer robots as an optional thing?
+						blocked = true;
+						break;
+					}
+				}
+			}
+			
+			if (blocked) {
+				let cell = this.getCell(robotPos);
+				if (cell.bumper != null) {
+					if (outList != null) {
+						outList.length = 0;
+					}
+					robotPos = robots[robotIdx];
+				}
+				break;
 			}
 
 			console.assert(this.contains(nextPos));
-			
-			for (let i = 0; i < robots.length; ++i) {
-				if (robots[i].equals(nextPos)) {
-					// TODO: maybe implement motion-transfer robots as an optional thing?
-					return robotPos;
-				}
-			}
+
 			robotPos = nextPos;
+
+			let cell = this.getCell(robotPos);
+			if (cell.bumper != null && cell.bumper.color != robotIdx) {
+				if (outList != null) {
+					outList.push(robotPos);
+				}
+				delta = Point.fromDirection(Direction.bumperSlant(moveDir, cell.bumper.slant));
+			}
 		}
+
+		if (outList != null) {
+			if (!(outList.length == 1 && outList[0] == robotPos)) {
+				outList.push(robotPos);
+			}
+		}
+		return robotPos;
 	}
 }
 
@@ -592,14 +719,14 @@ export let boardSets = [
 	  ' 8              \n' + 
 	  ' 2   4F9        \n' + 
 	  '       2       F\n',
-	  '         4 1    \n' + 
-	  '   8        0C 1\n' + 
-	  ' 493         2  \n' + 
-	  '                \n' + 
-	  '             8  \n' + 
-	  ' 8          F6 1\n' + 
-	  ' 2   469        \n' + 
-	  '       2       F\n',
+	  '           4 1  \n' + 
+	  '        G       \n' + 
+	  '   8            \n' + 
+	  ' 463            \n' + 
+	  '            0C 1\n' + 
+	  ' 8   8       2  \n' + 
+	  ' 2  96F9        \n' + 
+	  '       2  y    F\n',
 	  '   4 1 8        \n' + 
 	  '     493        \n' + 
 	  '                \n' + 
@@ -611,13 +738,13 @@ export let boardSets = [
 	],
 	[
 	  '           1    \n' + 
-	  '    8  1        \n' + 
-	  '     2          \n' + 
-	  '  71            \n' + 
-	  '   2        23  \n' + 
-	  ' 2              \n' + 
-	  '          D2 1  \n' + 
-	  '      W8 1     F\n',
+	  '    r        8  \n' + 
+	  '     8     483  \n' + 
+	  '    76D9        \n' + 
+	  '       2        \n' + 
+	  '  2C 1          \n' + 
+	  ' 8 2  g         \n' + 
+	  ' 2        WC 1 F\n',
 	  '         4 1    \n' + 
 	  '    2C 1        \n' + 
 	  '     2          \n' + 
@@ -634,7 +761,7 @@ export let boardSets = [
 	  '    2C 1      WC\n' + 
 	  ' 8   2         2\n' + 
 	  ' 2             F\n',
-	  '                \n' + 
+	  '     4 1        \n' + 
 	  '         479    \n' + 
 	  '           2  WC\n' + 
 	  ' 8             2\n' + 
@@ -644,13 +771,13 @@ export let boardSets = [
 	  '               F\n',
 	],
 	[
-	  '       4        \n' + 
-	  ' 4A             \n' + 
-	  '   2        56  \n' + 
-	  '                \n' + 
-	  '    C4          \n' + 
-	  '     2       432\n' + 
-	  ' 2              \n' + 
+	  '         4 1    \n' + 
+	  '        u       \n' + 
+	  ' 8          3C  \n' + 
+	  ' 2   8      y2  \n' + 
+	  '    56A9        \n' + 
+	  '       2   8    \n' + 
+	  '         4C3    \n' + 
 	  '               F\n',
 	  '   4 1   8      \n' + 
 	  '        56 1    \n' + 
@@ -678,14 +805,14 @@ export let boardSets = [
 	  '               F\n',
 	],
 	[
-	  '     8   4      \n' + 
-	  '   41           \n' + 
-	  '                \n' + 
-	  '           4E8  \n' + 
-	  ' 8       8      \n' + 
-	  '        B4      \n' + 
-	  '  4C            \n' + 
-	  '               F\n',
+	  '     4 1        \n' + 
+	  '    U        8  \n' + 
+	  '          1C43  \n' + 
+	  '           2    \n' + 
+	  '              r \n' + 
+	  ' 469            \n' + 
+	  ' 8 2     8      \n' + 
+	  ' 2      B6 1   F\n',
 	  '           4 1  \n' + 
 	  '       8        \n' + 
 	  '     443        \n' + 
@@ -925,8 +1052,8 @@ export class Game {
 		return null;
 	}
 	
-	moveRobot(robotId, direction) {
-		this.robots[robotId] = this.board.doMove(this.robots, robotId, direction);
+	moveRobot(robotId, direction, outMoves = null) {
+		this.robots[robotId] = this.board.doMove(this.robots, robotId, direction, outMoves);
 		return this.robots[robotId];
 	}
 	

@@ -30,8 +30,8 @@
 <script type="module">
 
 import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } from "./util.js";
-import { Board, Game, State, Color, Symbol, RobotMove, Goal, boardSets } from "./robots.js";
-import { TILE_SIZE, getEdgeFromPos, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, getRobotImage, getColorValue, drawGoal, drawStartPoint, drawBoard } from "./draw.js";
+import { Board, Game, State, Color, Symbol, RobotMove, Goal, boardSets, Bumper } from "./robots.js";
+import { TILE_SIZE, getEdgeFromPos, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, getRobotImage, getColorValue, drawStartPoint, drawBoard } from "./draw.js";
 
 let canvas = document.getElementById("MainCanvas");
 
@@ -119,27 +119,28 @@ canvas.addEventListener('wheel', function(evt) {
     let ticks = intdiv(evt.deltaY, 100);
 
     let cell = board.getCell(cellPos);
-    
-    if (evt.shiftKey) {
-        if (cell != null) {
-            let cellInt = 17;
-            if (cell.getGoal() != null) {
-                cellInt = cell.getGoal().toInt();
-            }
-            
-            cellInt += ticks;
-            while (cellInt < 0) {
-                cellInt += 18;
-            }
-            while (cellInt >= 18) {
-                cellInt -= 18;
-            }
+    if (cell == null) {
+        return;
+    }
 
-            if (cellInt <= 16) {
-                cell.setGoal(Goal.fromInt(cellInt));
-            } else {
-                cell.setGoal(null);
-            }
+    if (evt.shiftKey) {
+        let cellInt = 17;
+        if (cell.getGoal() != null) {
+            cellInt = cell.getGoal().toInt();
+        }
+        
+        cellInt += ticks;
+        while (cellInt < 0) {
+            cellInt += 18;
+        }
+        while (cellInt >= 18) {
+            cellInt -= 18;
+        }
+
+        if (cellInt <= 16) {
+            cell.setGoal(Goal.fromInt(cellInt));
+        } else {
+            cell.setGoal(null);
         }
     }
 });
@@ -162,6 +163,10 @@ canvas.addEventListener('click', function(evt) {
 
     let cell = board.getCell(cellPos);
 
+    if (cell == null) {
+        return;
+    }
+
     if (evt.shiftKey) {
         let goal = cell.getGoal();
         if (goal == null) {
@@ -170,6 +175,15 @@ canvas.addEventListener('click', function(evt) {
             cell.setGoal(Goal.fromInt(goal.toInt() + 1));
         } else {
             cell.setGoal(null);
+        }
+    } else if (evt.ctrlKey) {
+        let bumper = cell.getBumper();
+        if (bumper == null) {
+            cell.setBumper(Bumper.fromInt(0));
+        } else if (bumper.toInt() < 7) {
+            cell.setBumper(Bumper.fromInt(bumper.toInt() + 1));
+        } else {
+            cell.setBumper(null);
         }
     } else {
         let cellDir = getEdgeFromPos(mousePos);
@@ -182,6 +196,7 @@ window.requestAnimationFrame(loop);
 
 document.getElementById('load').onclick = function(event) {
     $('#file-input').trigger('click');
+    
 };
 
 document.getElementById('save').onclick = function(event) {
@@ -200,16 +215,18 @@ document.getElementById('save-pretty').onclick = function(event) {
 };
 
 document.getElementById('file-input').onchange = function(event) { 
-   var file = event.target.files[0];
-   var reader = new FileReader();
-   reader.readAsText(file,'UTF-8');
+    var file = event.target.files[0];
+    var reader = new FileReader();
+    reader.readAsText(file,'UTF-8');
 
-   // here we tell the reader what to do when it's done reading...
-   reader.onload = readerEvent => {
-      var content = readerEvent.target.result; // this is the content!
-      let arrays = JSON.parse(content);
-      boards = parseBoards(arrays);
-   }
+    // here we tell the reader what to do when it's done reading...
+    reader.onload = readerEvent => {
+        var content = readerEvent.target.result; // this is the content!
+        let arrays = JSON.parse(content);
+        boards = parseBoards(arrays);
+    }
+
+    event.target.value = '';
 }
 
 </script>

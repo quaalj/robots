@@ -52,7 +52,7 @@ export function getColorValue(color) {
 	}
 }
 
-export function drawGoal(goal, canvas, offset) {
+export function drawGoal(goal, canvas, offset = new Point(0, 0)) {
 	let ctx = canvas.getContext("2d");
 	ctx.strokeStyle = "#000000";
 	ctx.lineWidth = 2;
@@ -68,7 +68,39 @@ export function drawGoal(goal, canvas, offset) {
 	ctx.drawImage(image, offset.x, offset.y);
 }
 
-export function drawStartPoint(position, color, canvas, offset) {
+export function drawBumper(bumper, canvas, offset = new Point(0, 0)) {
+	const BUMPER_OFFSET = 7;
+	let ctx = canvas.getContext("2d");
+
+	let start = new Point(BUMPER_OFFSET, BUMPER_OFFSET);
+	let end = new Point(TILE_SIZE - BUMPER_OFFSET, TILE_SIZE - BUMPER_OFFSET);
+	if (bumper.slant) {
+		start.y = TILE_SIZE - BUMPER_OFFSET;
+		end.y = BUMPER_OFFSET;
+	}
+	start = start.add(offset);
+	end = end.add(offset);
+
+	ctx.lineWidth = BUMPER_OFFSET;
+	ctx.strokeStyle = "#000000";
+	ctx.lineCap = "round";
+	ctx.beginPath();
+	ctx.moveTo(start.x, start.y);
+	ctx.lineTo(end.x, end.y);
+	ctx.stroke();
+
+	ctx.lineWidth = BUMPER_OFFSET - 2;
+	ctx.strokeStyle = getColorValue(bumper.color);
+	ctx.beginPath();
+	ctx.moveTo(start.x, start.y);
+	ctx.lineTo(end.x, end.y);
+	ctx.stroke();
+	ctx.globalAlpha = 1.0;
+
+	ctx.lineCap = "butt";
+}
+
+export function drawStartPoint(position, color, canvas, offset = new Point(0, 0)) {
 	let ctx = canvas.getContext("2d");
 	ctx.strokeStyle = getColorValue(color);
 	ctx.lineWidth = 5;
@@ -107,6 +139,11 @@ export function drawBoard(board, canvas, offset = new Point(0, 0), drawBorder = 
 			
 			if (goal != null) {
 				drawGoal(goal, canvas, cellPos);
+			}
+
+			let bumper = cell.getBumper();
+			if (bumper != null) {
+				drawBumper(bumper, canvas, cellPos);
 			}
 		}
 	}
