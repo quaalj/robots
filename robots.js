@@ -1,4 +1,4 @@
-import { intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf } from './util.js';
+import { intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf, isHexDigit } from './util.js';
 
 /// Global Contants
 
@@ -36,7 +36,7 @@ export class Goal {
 		if (c != ' ') {
 			if (c == 'W') {
 				return new Goal(null, Symbol.Warp);
-			} else {
+			} else if (isHexDigit(c)) {
 				let goalInt = parseInt(c, 16);
 				return Goal.fromInt(goalInt);
 			}
@@ -182,7 +182,9 @@ export class Cell {
 	}
 	
 	setFences(fences) {
-		this.fences = fences;
+		for (let i = 0; i < 4; ++i) {
+			this.fences[i] = fences[i];
+		}
 	}
 	
 	fullyFenced() {
@@ -216,7 +218,7 @@ export class Board {
 		
 		for (let y = 0; y < height; ++y) {
 			for (let x = 0; x < width; ++x) {
-				this.setCell(x, y, new Cell(new Point(x, y)));
+				this.setCell(x, y, new Cell());
 			}
 		}
 	}
@@ -273,7 +275,10 @@ export class Board {
 	
 	getCell(...args) {
 		if (args.length == 2) {
-			return this.points[this.indexify(args[0], args[1])];
+			if (this.contains(...args)) {
+				return this.points[this.indexify(args[0], args[1])];
+			}
+			return null;
 		} else {
 			return this.getCell(args[0].x, args[0].y);
 		}
@@ -299,20 +304,64 @@ export class Board {
 			return this.contains(args[0].x, args[0].y)
 		}
 	}
+
+	isEdge(point, direction) {
+		return (point.y == 0 && direction == Direction.Up) ||
+				(point.y == this.size.y - 1 && direction == Direction.Down) ||
+				(point.x == 0 && direction == Direction.Left) ||
+				(point.x == this.size.x - 1 && direction == Direction.Right);
+	}
+
+	hasFenceAt(p, direction) {
+		return this.hasFenceBetween(p, p.add(Point.fromDirection(direction)));
+	}
+
+	setFenceAt(p, direction, value) {
+		this.setFenceBetween(p, p.add(Point.fromDirection(direction)), value);
+	}
 	
 	hasFenceBetween(p0, p1) {
-		if (!this.contains(p0) || !this.contains(p1)) {
+		if (!(this.contains(p0) || !this.contains(p1))) {
 			return true;
 		}
 		
 		let dirTo1 = (p1.sub(p0)).getDirection();
 		let dirTo0 = (p0.sub(p1)).getDirection();
+
+		let cell0 = this.getCell(p0);
+		if (cell0 != null && cell0.getFence(dirTo1)) {
+			return true;
+		}
+
+		let cell1 = this.getCell(p1);
+		if (cell1 != null && cell1.getFence(dirTo0)) {
+			return true;
+		}
 		
-		return this.getCell(p0).getFence(dirTo1) || this.getCell(p1).getFence(dirTo0);
+		return false;
+	}
+
+	setFenceBetween(p0, p1, value) {
+		if (!(this.contains(p0) || !this.contains(p1))) {
+			return;
+		}
+		
+		let dirTo1 = (p1.sub(p0)).getDirection();
+		let dirTo0 = (p0.sub(p1)).getDirection();
+
+		let cell0 = this.getCell(p0);
+		if (cell0 != null) {
+			this.getCell(p0).setFence(dirTo1, value);
+		}
+
+		let cell1 = this.getCell(p1);
+		if (cell1 != null) {
+			this.getCell(p1).setFence(dirTo0, value);
+		}
 	}
 	
 	isMoveBlocked(p0, p1) {
-		return this.hasFenceBetween(p0, p1);
+		return !this.contains(p0) || !this.contains(p1) || this.hasFenceBetween(p0, p1);
 	}
 	
 	rotate90(iterations) {
@@ -383,6 +432,7 @@ export class Board {
 			let nextPos = robotPos.add(delta);
 			
 			console.assert(!nextPos.equals(robots[robotIdx]), "Robot position looped somehow");
+			
 			if (nextPos.equals(robots[robotIdx])) {
 				return nextPos;
 			}
@@ -390,6 +440,8 @@ export class Board {
 			if (this.isMoveBlocked(robotPos, nextPos)) {
 				return robotPos;
 			}
+
+			console.assert(this.contains(nextPos));
 			
 			for (let i = 0; i < robots.length; ++i) {
 				if (robots[i].equals(nextPos)) {
@@ -522,48 +574,144 @@ export function generateRobotPlacement(board, rand) {
 	return result;
 }
 
-let boardSets = [
+export let boardSets = [
 	[
-		'           1    \n' +
-		'   8        08 1\n' +
-		'  61            \n' +
-		'                \n' +
-		'             8  \n' +
-		' 8          F  1\n' +
-		'      99        \n' +
-		'               F\n',
+	  '           1    \n' + 
+	  '   8        08 1\n' + 
+	  '  91            \n' + 
+	  '                \n' + 
+	  '             8  \n' + 
+	  ' 8          F  1\n' + 
+	  '      69        \n' + 
+	  '               F\n',
+	  '   4 1   8      \n' + 
+	  '   8   463      \n' + 
+	  '  96 1          \n' + 
+	  '            0C 1\n' + 
+	  '             2  \n' + 
+	  ' 8              \n' + 
+	  ' 2   4F9        \n' + 
+	  '       2       F\n',
+	  '         4 1    \n' + 
+	  '   8        0C 1\n' + 
+	  ' 493         2  \n' + 
+	  '                \n' + 
+	  '             8  \n' + 
+	  ' 8          F6 1\n' + 
+	  ' 2   469        \n' + 
+	  '       2       F\n',
+	  '   4 1 8        \n' + 
+	  '     493        \n' + 
+	  '                \n' + 
+	  '            0C 1\n' + 
+	  ' 469         2  \n' + 
+	  '   2     8      \n' + 
+	  ' 8      F6 1    \n' + 
+	  ' 2             F\n',
 	],
 	[
-		'           1    \n' +
-		'    8  1        \n' +
-		'     2          \n' +
-		'  71            \n' +
-		'   2        23  \n' +
-		' 2              \n' +
-		'          D2 1  \n' +
-		'      W8 1     F\n',
+	  '           1    \n' + 
+	  '    8  1        \n' + 
+	  '     2          \n' + 
+	  '  71            \n' + 
+	  '   2        23  \n' + 
+	  ' 2              \n' + 
+	  '          D2 1  \n' + 
+	  '      W8 1     F\n',
+	  '         4 1    \n' + 
+	  '    2C 1        \n' + 
+	  '     2          \n' + 
+	  ' 4D9         8  \n' + 
+	  ' 8 2       483  \n' + 
+	  ' 2         8    \n' + 
+	  '          76 1  \n' + 
+	  '      WC 1     F\n',
+	  '       4 1      \n' + 
+	  '           479  \n' + 
+	  '   8         2  \n' + 
+	  '  86 1     8    \n' + 
+	  '         4D3    \n' + 
+	  '    2C 1      WC\n' + 
+	  ' 8   2         2\n' + 
+	  ' 2             F\n',
+	  '                \n' + 
+	  '         479    \n' + 
+	  '           2  WC\n' + 
+	  ' 8             2\n' + 
+	  ' 2    2C 1   8  \n' + 
+	  '   8   2   453  \n' + 
+	  '  86 1          \n' + 
+	  '               F\n',
 	],
 	[
-		'       4        \n' +
-		' 4A             \n' +
-		'   2        56  \n' +
-		'                \n' +
-		'    C4          \n' +
-		'     2       432\n' +
-		' 2              \n' +
-		'               F\n',
+	  '       4        \n' + 
+	  ' 4A             \n' + 
+	  '   2        56  \n' + 
+	  '                \n' + 
+	  '    C4          \n' + 
+	  '     2       432\n' + 
+	  ' 2              \n' + 
+	  '               F\n',
+	  '   4 1   8      \n' + 
+	  '        56 1    \n' + 
+	  '                \n' + 
+	  ' 4A9            \n' + 
+	  '   2       8    \n' + 
+	  ' 8       4C3    \n' + 
+	  ' 2    3C 1      \n' + 
+	  '       2       F\n',
+	  '       4 1      \n' + 
+	  ' 4A9         8  \n' + 
+	  '   2        56 1\n' + 
+	  '                \n' + 
+	  '    3C 1       8\n' + 
+	  ' 8   2       4C3\n' + 
+	  ' 2              \n' + 
+	  '               F\n',
+	  '       4 1      \n' + 
+	  '                \n' + 
+	  '          3C 1  \n' + 
+	  '     8     2    \n' + 
+	  ' 8  56 1        \n' + 
+	  ' 2 8         4A9\n' + 
+	  ' 4C3           2\n' + 
+	  '               F\n',
 	],
 	[
-		'     8   4      \n' +
-		'   41           \n' +
-		'                \n' +
-		'           4E8  \n' +
-		' 8       8      \n' +
-		'        B4      \n' +
-		'  4C            \n' +
-		'               F\n',
+	  '     8   4      \n' + 
+	  '   41           \n' + 
+	  '                \n' + 
+	  '           4E8  \n' + 
+	  ' 8       8      \n' + 
+	  '        B4      \n' + 
+	  '  4C            \n' + 
+	  '               F\n',
+	  '           4 1  \n' + 
+	  '       8        \n' + 
+	  '     443        \n' + 
+	  ' 8   8   4B9    \n' + 
+	  ' 2  E6 1   2    \n' + 
+	  '        1C 1    \n' + 
+	  '         2      \n' + 
+	  '               F\n',
+	  '       4 1      \n' + 
+	  '          1C 1  \n' + 
+	  ' 469       2    \n' + 
+	  ' 8 2         8  \n' + 
+	  ' 2         443  \n' + 
+	  '     8          \n' + 
+	  '    B6 1        \n' + 
+	  '               F\n',
+	  '     8   4 1    \n' + 
+	  '   443          \n' + 
+	  '                \n' + 
+	  '           4B9  \n' + 
+	  ' 8       8   2  \n' + 
+	  ' 2      66 1    \n' + 
+	  '  1C 1          \n' + 
+	  '   2           F\n',
 	],
-];
+  ];
 
 export function generateBoard(seed = 0) {
 	let baseBoard = new Board(4, 4);

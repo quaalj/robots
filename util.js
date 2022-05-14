@@ -69,6 +69,10 @@ export function intcmp(x, y) {
 	return x - y;
 }
 
+export function isHexDigit(x) {
+	return x.length == 1 && (/[A-Fa-f\d]/).test(x);
+}
+
 export function strcmp ( str1, str2 ) {
 	// http://kevin.vanzonneveld.net
 	// +   original by: Waldo Malqui Silva
