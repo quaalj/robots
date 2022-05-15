@@ -7,6 +7,7 @@ import crypto from 'crypto';
 
 import { Game, State, Player, Goal, RobotMove } from './robots.js';
 import { Point, Direction, arrayRemove, intdiv, isAnyOf, arrayFind, arrayContains } from './util.js';
+import { Worker } from "worker_threads";
 
 let directory = fs.realpathSync('.');
 const wss = new WebSocketServer({noServer: true});
@@ -34,6 +35,16 @@ var moveSequence = [];
 var redoStack = [];
 
 var currentTimerId = null;
+
+var solutionWorker = new Worker("./solutionWorker.js");
+var demoSequence = null;
+
+var demoStep = -1;
+var demoInterval = null;
+
+const DEMO_STEP_SPEED = 1000;
+const DEMO_WARM_UP_TIME = 1; // number of steps before the animation starts
+const DEMO_LINGER_TIME = 5; // number of steps after demo is finished before it restarts
 
 class Client {
 	constructor(key) {
@@ -254,7 +265,11 @@ function syncGame(client) {
 	for (let i = 0; i < game.playerBids.length; ++i) {
 		commands.push(makePlayerBidCommand(game.playerBids[i].playerId));
 	}
-	
+
+	if(demoSequence) {
+		commands.push(makeDemoReadyCommand());
+	}
+
 	if (game.state == State.Bid) {
 		if (game.timerStartTime != null) {
 			commands.push(makeStartTimerCommand());
@@ -263,6 +278,8 @@ function syncGame(client) {
 		if (game.timerStartTime != null) {
 			commands.push(makeStartSolveCommand());
 		}
+	} else if (game.state == State.Demo) {
+		commands.push(makeRobotFinalPositionCommand());
 	}
 
 	client.socket.send(commands.join('\n'));
@@ -359,6 +376,20 @@ function advanceSolveState() {
 
 function makeStartSolveCommand() {
 	return `START_SOLVE ${game.getSolvingPlayer()} ${game.timerStartTime}`;
+}
+
+function makeDemoReadyCommand() {
+	return `DEMO_READY ${demoSequence.length}`;
+}
+
+function makeRobotFinalPositionCommand() {
+	let str = 'FINAL_POSITION'
+
+	for(let i in game.robots) {
+		str += ` ${i} ${game.robots[i].x} ${game.robots[i].y}`;
+	}
+
+	return str;
 }
 
 function updateSolveState() {
@@ -470,6 +501,54 @@ function nextRound() {
 	game.startBidState();
 	let commands = [makeGameStateCommand(game.state), makeRobotResetCommand()]
 	sendAll(commands.join('\n'));
+
+	endSolution();
+	workOnSolution();
+	endDemo();
+}
+
+function demoNextStep() {
+	demoStep = (demoStep + 1 + DEMO_WARM_UP_TIME) % (demoSequence.length + DEMO_LINGER_TIME) - DEMO_WARM_UP_TIME;
+
+	if(demoStep >= 0 && demoStep < demoSequence.length) {
+		let robotID = demoSequence[demoStep].color;
+		let dir = demoSequence[demoStep].direction;
+
+		game.moveRobot(robotID, dir);
+		let command = [makeRobotMoveCommand(robotID)];
+		sendAll(command.join('\n'));
+	}
+
+	if(demoStep == -1 * DEMO_WARM_UP_TIME) {
+		game.resetRobotPositions();
+		let command = [makeRobotResetCommand()];
+		sendAll(command.join('\n'));
+	}
+}
+
+function startDemo() {
+	game.startDemoState();
+
+	// run through the entire solution to get the final robot positions
+	// to send to the client so the arrows can look nice
+	for(let i in demoSequence) {
+		let robotID = demoSequence[i].color;
+		let dir = demoSequence[i].direction;
+
+		game.moveRobot(robotID, dir);
+	}
+
+	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state), makeRobotFinalPositionCommand()];
+	sendAll(command.join('\n'));
+
+	game.resetRobotPositions();
+
+	demoStep = -1 * DEMO_WARM_UP_TIME;
+	demoInterval = setInterval(demoNextStep, DEMO_STEP_SPEED);
+}
+
+function endDemo() {
+	clearInterval(demoInterval);
 }
 
 function executeVote(vote) {
@@ -485,7 +564,7 @@ function executeVote(vote) {
 	} else if (isAnyOf(vote, 'SKIPDEMO', 'NEXT')) {
 		nextRound();
 	} else if (vote == 'DEMO') {
-		// TODO: demo state
+		startDemo();
 	}
 }
 
@@ -503,6 +582,7 @@ function doCommand(client, command, args) {
 		
 		let playerJoinedCommand = makePlayerJoinedCommand(client.playerId, client.cachedName);
 		let commands = [playerJoinedCommand, makeAssignPlayerCommand(client.playerId)];
+
 		client.socket.send(commands.join('\n'));
 		
 		sendAllExcept(playerJoinedCommand, client.key);
@@ -622,5 +702,65 @@ function doCommand(client, command, args) {
 		}
 	}
 }
+
+function endSolution() {
+	demoSequence = null;
+}
+
+let workerMessageListener = function(msg) {
+	let solutionGoal = new Goal(msg.goalColor, msg.goalSymbol);
+	let solutionRobots = [];
+
+	for(let i in msg.robots) {
+		solutionRobots[i] = new Point(msg.robots[i].x, msg.robots[i].y);
+	}
+
+	if(!isSolutionStale(msg.seed, solutionGoal, solutionRobots)) {
+		demoSequence = msg.solution;
+		sendAll(makeDemoReadyCommand());
+	}
+}
+
+function workOnSolution() {
+	solutionWorker.terminate();
+	solutionWorker = new Worker("./solutionWorker.js");
+	solutionWorker.on("message", workerMessageListener)
+	demoSequence = null;
+
+	let msg = {
+		'boardSeed': game.seed,
+		'boardString': game.board.toString(),
+		'boardWidth': game.board.width,
+		'boardHeight': game.board.height,
+		'goalColor': game.currentGoal.color,
+		'goalSymbol': game.currentGoal.symbol,
+		'robots': game.robots
+	}
+
+	solutionWorker.postMessage(msg);
+}
+
+function isSolutionStale(seed, goal, robots) {
+	let stale = false;
+
+	if (seed != game.seed) {
+		stale = true;
+	}
+
+	if (!goal.equals(game.currentGoal)) {
+		stale = true;
+	}
+
+	for(let i in robots) {
+		if (!robots[i].equals(game.originalRobotConfig[i])) {
+			stale = true;
+		}
+	}
+
+	return stale;
+}
+
+//ToDo: When game resets after winner, need to call workOnSolution
+workOnSolution();
 
 http.createServer(accept).listen(8080);

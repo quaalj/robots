@@ -60,18 +60,18 @@ div.player_div {
 </span>
 
 <span class="playing free end">
-	<!-- <button id="demo" class="playing free end">View Optimal</button> -->
+	<button id="demo" class="playing free end">View Optimal</button>
 	<button id="reset_robots">Reset Robots</button>
 	<button id="next" class="playing free">Next Round</button>
 	<br>
 </span>
 
-<!-- 
 <span class="playing demo">
 	<button id="skip_demo" class="player demo">Skip Demo</button>
+	<span id="solution_indicator" class="playing demo"></span>
 	<br>
 </span>
--->
+
 
 <span class="playing">
 	Name: <span id="name"></span>
@@ -94,12 +94,29 @@ div.player_div {
 <script type="module">
 
 import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } from "./util.js";
-import { Game, State, Color, Symbol, RobotMove, Goal } from "./robots.js";
+import { Game, State, Color, Symbol, RobotMove, Goal, solveBoard } from "./robots.js";
 import { TILE_SIZE, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, getRobotImage, getColorValue, drawGoal, drawStartPoint, drawBoard } from "./draw.js";
 
 const ROBOT_TWEEN_SPEED = 32.0;
 const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 
+// length of shortest path is sent by message from server
+// don't want people cheating...
+const QUIET_MODE = false;
+
+function getColorValueArrow(color) {
+	if (color == Color.Yellow) {
+		return "#AAAA22";
+	} else if (color == Color.Green) {
+		return "#22AA22";
+	} else if (color == Color.Red) {
+		return "#AA2222";
+	} else if (color == Color.Blue) {
+		return "#2222AA";
+	} else {
+		return "#FFFFFF";
+	}
+}
 
 class ActiveSelection {
 	constructor(game) {
@@ -204,6 +221,9 @@ var moveSequence = [];
 var redoStack = [];
 var moveCount = null;
 
+var demoAvailable = false;
+var arrowSequence = [];
+
 var playerId = null;
 var currentSolvingPlayer = null;
 
@@ -212,7 +232,183 @@ var serverBidStartTime = null;
 
 var socket = null;
 
-export function drawGame(game, canvas, offset = new Point(0, 0)) {
+class MoveArrow {
+	static cellHCount = Array(game.board.width * game.board.height).fill(0);
+	static cellVCount = Array(game.board.width * game.board.height).fill(0);
+	static finalRobotPositions = [];
+
+	constructor(start, end, color, game) {
+		this.startPoint = start;
+		this.endPoint = end;
+		this.color = color;
+		this.game = game;
+		this.tweenAlpha = 0;
+
+		this.updateCellCount();
+		this.dodge = this.findMaxLineCount() - 1;
+	}
+
+	static clearCellCounts() {
+		MoveArrow.cellHCount = Array(game.board.width * game.board.height).fill(0);
+		MoveArrow.cellVCount = Array(game.board.width * game.board.height).fill(0);
+	}
+
+	static setFinalPosition(robotID, x, y) {
+		MoveArrow.finalRobotPositions[robotID] = new Point(x, y);
+	}
+
+	static clearFinalPositions() {
+		MoveArrow.finalRobotPositions = [];
+	}
+	static drawCellCounts() {
+		for(let y = 0; y < game.board.height; y++) {
+			for(let x = 0; x < game.board.width; x++) {
+				let ctx = canvas.getContext("2d");
+
+				let str = Math.max(MoveArrow.cellHCount[y * game.board.height + x], MoveArrow.cellVCount[y * game.board.height + x])
+				ctx.fillText(str, (x + 0.5) * TILE_SIZE, (y + 0.5) * TILE_SIZE);
+			}
+		}
+	}
+
+	isCellFull(cell) {
+		let result = false;
+
+		if(this.game.board.getCell(cell).getGoal()) {
+			result = true;
+		}
+
+		for(let i in this.game.robots) {
+
+			if(cell.equals(MoveArrow.finalRobotPositions[i])) {
+				result = true;
+			}
+		}
+
+		return result;
+	}
+
+	getDirection() {
+		return this.endPoint.sub(this.startPoint).getDirection();
+	}
+
+	getCellArray()
+	{
+		let direction = this.getDirection();
+
+		if (direction == Direction.Left || direction == Direction.Right)
+		{
+			return MoveArrow.cellHCount;
+		}
+		else
+		{
+			return MoveArrow.cellVCount;
+		}
+	}
+
+	updateCellCount() {
+		let currPoint = this.startPoint;
+		let direction = Point.fromDirection(this.getDirection());
+		let cellArray = this.getCellArray();
+
+		cellArray[currPoint.y * game.board.height + currPoint.x]++;
+
+		do {
+			currPoint = currPoint.add(direction);
+			cellArray[currPoint.y * game.board.height + currPoint.x]++;
+		} while(!currPoint.equals(this.endPoint))
+	}
+
+	findMaxLineCount() {
+		let currPoint = this.startPoint;
+		let cellArray = this.getCellArray();
+
+		let max = cellArray[this.startPoint.y * game.board.height + this.startPoint.x];
+		let directionUnit = Point.fromDirection(this.getDirection());
+
+		do {
+			currPoint = currPoint.add(directionUnit);
+			let curr = cellArray[currPoint.y * game.board.height + currPoint.x];
+
+			if(curr > max) {
+				max = curr;
+			}
+		} while(!currPoint.equals(this.endPoint))
+
+		return max;
+	}
+
+	draw(canvas) {
+		const ARROW_SIZE = 6;
+		const PADDING = 5;
+		const LINE_THICKNESS = 1.5;
+		const DODGE_WIDTH = 4;
+
+		let ctx = canvas.getContext("2d");
+		let direction = this.getDirection();
+		let offset = TILE_SIZE / 2;
+
+		let isStartFull = this.isCellFull(this.startPoint);
+		let isDestFull = this.isCellFull(this.endPoint);
+
+		let fullStartCellAdjustment = isStartFull ? offset : PADDING;
+		let fullDestCellAdjustment = isDestFull ? offset : PADDING;
+
+		// place start and end points in center of tile
+		let x1 = this.startPoint.x * TILE_SIZE + offset;
+		let y1 = this.startPoint.y * TILE_SIZE + offset;
+		let x2 = this.endPoint.x * TILE_SIZE + offset;
+		let y2 = this.endPoint.y * TILE_SIZE + offset;
+
+		// shrink arrow length if start or destination cell is full
+		x1 = x1 - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+		y1 = y1 + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
+		x2 = x2 + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+		y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
+
+		// displace arrow to the side if cells in the arrow's path already contain arrows
+		x1 += DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+		y1 += DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+		x2 += DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+		y2 += DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+
+		// for some nice arrow tweening
+		if(direction == Direction.Left || direction == Direction.Right) {
+			x2 = x1 + (x2 - x1) * this.tweenAlpha;
+		} else {
+			y2 = y1 + (y2 - y1) * this.tweenAlpha;
+		}
+
+		let arrowAngle = -1 * Math.PI / 2 * direction;
+
+		ctx.strokeStyle = getColorValueArrow(this.color);
+		ctx.lineWidth = LINE_THICKNESS;
+
+		// arrow shaft
+		ctx.beginPath();
+		ctx.moveTo(x1, y1);
+		ctx.lineTo(x2, y2);
+		ctx.stroke();
+
+		// arrow head
+		ctx.beginPath();
+		ctx.moveTo(x2,y2);
+		ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle + Math.PI / 4) * ARROW_SIZE);
+		ctx.stroke();
+
+		ctx.beginPath();
+		ctx.moveTo(x2,y2);
+		ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * ARROW_SIZE)
+		ctx.stroke();
+	}
+
+	update(deltaTime) {
+		let dist = this.startPoint.lInfDist(this.endPoint);
+		this.tweenAlpha = Math.min(this.tweenAlpha + (deltaTime * ROBOT_TWEEN_SPEED) / dist, 1.0);
+	}
+}
+
+function drawGame(game, canvas, offset = new Point(0, 0)) {
 	clearCanvas(canvas);
 	drawBoard(game.board, canvas, offset);
 
@@ -324,8 +520,8 @@ function updateUI() {
 		
 		document.getElementById('gentleman').disabled = player.vote == 'SKIPBID';
 		document.getElementById('next').disabled = player.vote == 'NEXT';
-		//document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
-		//document.getElementById('demo').disabled = player.vote == 'DEMO';
+		document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
+		document.getElementById('demo').disabled = (player.vote == 'DEMO' || !demoAvailable);
 		
 		document.getElementById('name').textContent = "" + player.name;
 		document.getElementById('score').textContent = "" + player.getScore();
@@ -626,11 +822,17 @@ window.addEventListener("keydown", function(event) {
 	//event.preventDefault();
 }, true);
 
+function clearMoveArrows() {
+	MoveArrow.clearCellCounts();
+	MoveArrow.clearFinalPositions();
+	arrowSequence = [];
+}
+
 let lastLoop = 0;
 function loop(timestamp) {
 	let deltaTime = (timestamp - lastLoop) / 1000.0;
 	lastLoop = timestamp;
-	
+
 	for (let i = 0; i < robots.length; ++i) {
 		robots[i].update(deltaTime);
 	}
@@ -638,7 +840,14 @@ function loop(timestamp) {
 	updateUI();
 	
 	drawGame(game, canvas);
-	
+
+	if(game.state == State.Demo) {
+		for(let i in arrowSequence) {
+			arrowSequence[i].draw(canvas);
+		}
+		arrowSequence[arrowSequence.length - 1]?.update(deltaTime);
+	}
+
 	window.requestAnimationFrame(loop);
 }
 
@@ -657,7 +866,10 @@ function onServerMessageReceived(data) {
 }
 
 function doServerCommand(command, args) {
-	console.log(`${command} ${args}`);
+	if(!QUIET_MODE)
+	{
+		console.log(`${command} ${args}`);
+	}
 
 	if (command == 'GIVE_TOKENS') {
 		processGiveTokens(args);
@@ -692,6 +904,10 @@ function doServerCommand(command, args) {
 		processStartSolve(args);
 	} else if (command == 'PLAYER_VOTE') {
 		processPlayerVote(args);
+	} else if (command == 'DEMO_READY') {
+		demoAvailable = args[0];
+	} else if (command == 'FINAL_POSITION') {
+		processFinalPosition(args);
 	}
 }
 
@@ -740,6 +956,15 @@ function processGiveTokens(args) {
 	updateTokenCount();
 }
 
+function processFinalPosition(args) {
+	let tok = args.toString().split(",");
+	let numPositions = intdiv(tok.length, 3);
+
+	for(let i = 0; i < numPositions; i++) {
+		MoveArrow.setFinalPosition(tok[i * 3], tok[i * 3 + 1], tok[i * 3 + 2]);
+	}
+}
+
 function updateTokenCount() {
 	if (game.goalsRemaining.length == 0) {
 		let players = game.getPlayers(true);
@@ -784,8 +1009,17 @@ function processSetState(args) {
 	if (game.state == State.Bid) {
 		game.resetBids();
 		$(`.player_bid`).text('');
+
+		demoAvailable = false;
 	}
-	
+
+	if (game.state == State.Demo) {
+		game.resetRobotPositions();
+		clearMoveArrows();
+
+		document.getElementById('solution_indicator').textContent = `The computer found: ${demoAvailable}`;
+	}
+
 	selection.clearSelection();
 	serverBidStartTime = null;
 	currentSolvingPlayer = null;
@@ -879,11 +1113,14 @@ function processRobotReset(args) {
 	if (args.length % 2 == 1) {
 		moveCount = parseInt(args[args.length - 1]);
 	}
+
+	if(game.state == State.Demo) {
+		clearMoveArrows();
+	}
 }
 
 function processRobotMove(args) {
 	let robotId = parseInt(args[0]);
-
 	let moveList = [];
 
 	for (let i = 1; i < args.length; i += 2) {
@@ -896,13 +1133,16 @@ function processRobotMove(args) {
 			robots[robotId].moveTo(moveList[i]);
 		}
 	}
-	
 	if (selection.selectedRobot == robotId) {
 		selection.setRobot(selection.selectedRobot);
 	}
 	
 	if (args.length % 2 == 0) {
 		moveCount = parseInt(args[args.length - 1]);
+	}
+
+	if (game.state == State.Demo) {
+		arrowSequence.push(new MoveArrow(orig, dest, robotId, game))
 	}
 }
 
@@ -939,7 +1179,10 @@ window.onload = function() {
 	}
 
 	socket.onmessage = function(event) {
-		console.log(`Message = ${event.data}`);
+		if(!QUIET_MODE)
+		{
+			console.log(`Message = ${event.data}`);
+		}
 		onServerMessageReceived(event.data);
 	};
 
@@ -985,8 +1228,8 @@ document.getElementById('next').onclick = voteNextRound;
 document.getElementById('gentleman').onclick = voteGentleman;
 document.getElementById('reset_robots').onclick = revertMoves;
 
-// document.getElementById('skip_demo').onclick = voteSkipDemo;
-// document.getElementById('demo').onclick = voteViewOptimal;
+document.getElementById('skip_demo').onclick = voteSkipDemo;
+document.getElementById('demo').onclick = voteViewOptimal;
 
 window.requestAnimationFrame(loop);
 
