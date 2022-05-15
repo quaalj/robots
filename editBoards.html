@@ -1,0 +1,235 @@
+<html>
+ <body>
+<span style="display:none;">
+<img id="moon" src="moon.png">
+<img id="star" src="star.png">
+<img id="gear" src="gear.png">
+<img id="saturn" src="saturn.png">
+<img id="warp" src="warp.png">
+<img id="red" src="red.png">
+<img id="blue" src="blue.png">
+<img id="green" src="green.png">
+<img id="yellow" src="yellow.png">
+<img id="grey" src="grey.png">
+</span>
+    
+<canvas id="MainCanvas" width="1070" height="1070" style="border:1px solid #c3c3c3;">
+</canvas>
+
+<br><br>
+
+<button id="save">Save</button>
+<button id="save-pretty">Save As Code</button>
+<button id="load">Open</button>
+<input id="file-input" type="file" name="name" style="display: none;" />
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script type="module" src="/util.js"></script>
+<script type="module" src="/robots.js"></script>
+
+<script type="module">
+
+import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } from "./util.js";
+import { Board, Game, State, Color, Symbol, RobotMove, Goal, boardSets, Bumper } from "./robots.js";
+import { TILE_SIZE, getEdgeFromPos, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, getRobotImage, getColorValue, drawStartPoint, drawBoard } from "./draw.js";
+
+let canvas = document.getElementById("MainCanvas");
+
+function parseBoards(boardSets, fillAmount = 0) {
+    let boards = [];
+    for (let y = 0; y < boardSets.length; ++y) {
+        boards.push([])
+        for (let x = 0; x < boardSets[y].length; ++x) {
+            boards[y].push(Board.parseBoard(boardSets[y][x]));
+        }
+        while (boards[y].length < fillAmount) {
+            let board = new Board(8, 8);
+            board.getCell(7, 7).setFences([true, true, true, true]);
+            boards[y].push(board);
+        }
+    }
+    return boards;
+}
+
+function dumpBoards(boards) {
+    let boardSets = [];
+    for (let y = 0; y < boards.length; ++y) {
+        let current = [];
+        for (let x = 0; x < boards[y].length; ++x) {
+            current.push(boards[y][x].toString());
+        }
+        boardSets.push(current);
+    }
+    return boardSets;
+}
+
+function prettyPrintBoards(boards) {
+    let data = "[\n";
+    for (let y = 0; y < boards.length; ++y) {
+        data += '  [\n';
+        for (let x = 0; x < boards[y].length; ++x) {
+            let boardString = boards[y][x].toString();
+            let splits = boardString.split('\n').filter(x => x.length > 0);
+            for (let i = 0; i < splits.length; ++i) {
+                data += "    '" + splits[i];
+                if (i == splits.length - 1) {
+                    data += "\\n',\n";
+                } else {
+                    data += "\\n' + \n";
+                }
+            }
+        }
+        data += '  ],\n';
+    }
+    data += '];\n';
+    return data;
+}
+
+let boards = parseBoards(boardSets, 4);
+let BOARD_SIZE = TILE_SIZE * 8;
+let BOARD_SPACING = 8;
+
+function loop(timestamp) {
+    clearCanvas(canvas);
+    for (let y = 0; y < boards.length; ++y) {
+        for (let x = 0; x < boards[y].length; ++x) {
+            let drawOffset = new Point(x * (BOARD_SIZE + BOARD_SPACING), y * (BOARD_SIZE + BOARD_SPACING))
+            drawBoard(boards[y][x], canvas, drawOffset.add(BOARD_SPACING, BOARD_SPACING), true);
+        }
+    }
+	
+	window.requestAnimationFrame(loop);
+}
+
+canvas.addEventListener('wheel', function(evt) {
+    let mousePos = getMousePos(canvas, evt);
+    let boardIndex = new Point(intdiv(mousePos.x, BOARD_SIZE + BOARD_SPACING), intdiv(mousePos.y, BOARD_SIZE + BOARD_SPACING));
+    mousePos = mousePos.sub(boardIndex.mul(BOARD_SIZE + BOARD_SPACING));
+	let cellPos = getCellFromPos(mousePos);
+    let boardX = boards[boardIndex.y];
+    
+    if (boardX == undefined) {
+        return;
+    }
+    let board = boardX[boardIndex.x];
+    if (board == undefined) {
+        return;
+    }
+
+    let ticks = intdiv(evt.deltaY, 100);
+
+    let cell = board.getCell(cellPos);
+    if (cell == null) {
+        return;
+    }
+
+    if (evt.shiftKey) {
+        let cellInt = 17;
+        if (cell.getGoal() != null) {
+            cellInt = cell.getGoal().toInt();
+        }
+        
+        cellInt += ticks;
+        while (cellInt < 0) {
+            cellInt += 18;
+        }
+        while (cellInt >= 18) {
+            cellInt -= 18;
+        }
+
+        if (cellInt <= 16) {
+            cell.setGoal(Goal.fromInt(cellInt));
+        } else {
+            cell.setGoal(null);
+        }
+    }
+});
+
+canvas.addEventListener('click', function(evt) {
+    let mousePos = getMousePos(canvas, evt);
+    mousePos = mousePos.sub(BOARD_SPACING, BOARD_SPACING);
+    let boardIndex = new Point(intdiv(mousePos.x, BOARD_SIZE + BOARD_SPACING), intdiv(mousePos.y, BOARD_SIZE + BOARD_SPACING));
+    mousePos = mousePos.sub(boardIndex.mul(BOARD_SIZE + BOARD_SPACING));
+	let cellPos = getCellFromPos(mousePos);
+    let boardX = boards[boardIndex.y];
+    
+    if (boardX == undefined) {
+        return;
+    }
+    let board = boardX[boardIndex.x];
+    if (board == undefined) {
+        return;
+    }
+
+    let cell = board.getCell(cellPos);
+
+    if (cell == null) {
+        return;
+    }
+
+    if (evt.shiftKey) {
+        let goal = cell.getGoal();
+        if (goal == null) {
+            cell.setGoal(Goal.fromInt(0));
+        } else if (goal.toInt() < 16) {
+            cell.setGoal(Goal.fromInt(goal.toInt() + 1));
+        } else {
+            cell.setGoal(null);
+        }
+    } else if (evt.ctrlKey) {
+        let bumper = cell.getBumper();
+        if (bumper == null) {
+            cell.setBumper(Bumper.fromInt(0));
+        } else if (bumper.toInt() < 7) {
+            cell.setBumper(Bumper.fromInt(bumper.toInt() + 1));
+        } else {
+            cell.setBumper(null);
+        }
+    } else {
+        let cellDir = getEdgeFromPos(mousePos);
+        let hasFence = board.hasFenceAt(cellPos, cellDir);
+        board.setFenceAt(cellPos, cellDir, !hasFence);
+    }
+});
+
+window.requestAnimationFrame(loop);
+
+document.getElementById('load').onclick = function(event) {
+    $('#file-input').trigger('click');
+    
+};
+
+document.getElementById('save').onclick = function(event) {
+    let boardArrays = dumpBoards(boards);
+    let data = JSON.stringify(boardArrays, null, 2);
+    var aFileParts = [data];
+    var oMyBlob = new Blob(aFileParts, {type : 'text/plain'}); // the blob
+    window.open(URL.createObjectURL(oMyBlob));
+};
+
+document.getElementById('save-pretty').onclick = function(event) {
+    let data = prettyPrintBoards(boards);
+    var aFileParts = [data];
+    var oMyBlob = new Blob(aFileParts, {type : 'text/plain'}); // the blob
+    window.open(URL.createObjectURL(oMyBlob));
+};
+
+document.getElementById('file-input').onchange = function(event) { 
+    var file = event.target.files[0];
+    var reader = new FileReader();
+    reader.readAsText(file,'UTF-8');
+
+    // here we tell the reader what to do when it's done reading...
+    reader.onload = readerEvent => {
+        var content = readerEvent.target.result; // this is the content!
+        let arrays = JSON.parse(content);
+        boards = parseBoards(arrays);
+    }
+
+    event.target.value = '';
+}
+
+</script>
+
+ </body>
+</html>

@@ -95,58 +95,14 @@ div.player_div {
 
 import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } from "./util.js";
 import { Game, State, Color, Symbol, RobotMove, Goal, solveBoard } from "./robots.js";
+import { TILE_SIZE, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, getRobotImage, getColorValue, drawGoal, drawStartPoint, drawBoard } from "./draw.js";
 
-const TILE_SIZE = 32;
 const ROBOT_TWEEN_SPEED = 32.0;
 const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 
 // length of shortest path is sent by message from server
 // don't want people cheating...
 const QUIET_MODE = false;
-
-function getSymbolImage(symbol) {
-	if (symbol == Symbol.Star) {
-		return document.getElementById('star');
-	} else if (symbol == Symbol.Moon) {
-		return document.getElementById('moon');
-	} else if (symbol == Symbol.Gear) {
-		return document.getElementById('gear');
-	} else if (symbol == Symbol.Saturn) {
-		return document.getElementById('saturn');
-	} else if (symbol == Symbol.Warp) {
-		return document.getElementById('warp');
-	} else {
-		return null;
-	}
-}
-
-function getRobotImage(color) {
-	if (color == Color.Yellow) {
-		return document.getElementById('yellow');
-	} else if (color == Color.Green) {
-		return document.getElementById('green');
-	} else if (color == Color.Red) {
-		return document.getElementById('red');
-	} else if (color == Color.Blue) {
-		return document.getElementById('blue');
-	} else {
-		return null;
-	}
-}
-
-function getColorValue(color) {
-	if (color == Color.Yellow) {
-		return "#FFFF00";
-	} else if (color == Color.Green) {
-		return "#00FF00";
-	} else if (color == Color.Red) {
-		return "#FF0000";
-	} else if (color == Color.Blue) {
-		return "#0000FF";
-	} else {
-		return "#FFFFFF";
-	}
-}
 
 function getColorValueArrow(color) {
 	if (color == Color.Yellow) {
@@ -162,98 +118,6 @@ function getColorValueArrow(color) {
 	}
 }
 
-function drawGoal(goal, canvas, offset) {
-	let ctx = canvas.getContext("2d");
-	ctx.strokeStyle = "#000000";
-	ctx.lineWidth = 2;
-	ctx.fillStyle = getColorValue(goal.color);
-	ctx.beginPath();
-	ctx.arc(offset.x + 16, offset.y + 16, 13, 0, 2 * Math.PI);
-	ctx.fill();
-	ctx.stroke();
-	let image = getSymbolImage(goal.symbol);
-	if (image == null) {
-		console.log("Here");
-	}
-	ctx.drawImage(image, offset.x, offset.y);
-}
-
-function drawStartPoint(color, canvas, offset) {
-	let ctx = canvas.getContext("2d");
-	ctx.strokeStyle = getColorValue(color);
-	ctx.lineWidth = 5;
-	ctx.globalAlpha = 0.3;
-	let current = game.originalRobotConfig[color];
-	let currentDraw = current.mul(TILE_SIZE).add(offset).add(new Point(TILE_SIZE / 2, TILE_SIZE / 2));
-	let radius = TILE_SIZE / 2.15;
-	ctx.beginPath();
-	ctx.arc(currentDraw.x, currentDraw.y, radius, 0, 2 * Math.PI);
-	ctx.stroke();
-	ctx.globalAlpha = 1.0;
-}
-
-function drawBoard(board, canvas, offset = new Point(0, 0)) {
-	let ctx = canvas.getContext("2d");
-
-	for (let y = 0; y < board.size.y; ++y) {
-		for (let x = 0; x < board.size.x; ++x) {
-			let cell = board.getCell(x, y);
-			let cellPos = (new Point(x * TILE_SIZE, y * TILE_SIZE)).add(offset);
-			ctx.lineWidth = 1;
-			if (cell.fullyFenced()) {
-				ctx.fillStyle = "#c3c3c3";
-				ctx.fillRect(cellPos.x, cellPos.y, TILE_SIZE, TILE_SIZE);
-			} else {
-				ctx.strokeStyle = "#a0a0a0";
-				ctx.strokeRect(cellPos.x, cellPos.y, TILE_SIZE, TILE_SIZE);
-			}
-		}
-	}
-	
-	for (let y = 0; y < board.size.y; ++y) {
-		for (let x = 0; x < board.size.x; ++x) {
-			let cell = board.getCell(x, y);
-			let cellPos = (new Point(x * TILE_SIZE, y * TILE_SIZE)).add(offset);
-			let goal = cell.getGoal();
-			
-			if (goal != null) {
-				drawGoal(goal, canvas, cellPos);
-			}
-		}
-	}
-	
-	if (game.originalRobotConfig != null) {
-		for (let i = 0; i < game.originalRobotConfig.length; ++i) {
-			drawStartPoint(i, canvas, offset);
-		}
-	}
-	
-	for (let y = 0; y < board.size.y; ++y) {
-		for (let x = 0; x < board.size.x; ++x) {
-			let cell = board.getCell(x, y);
-			let cellPos = (new Point(x * TILE_SIZE, y * TILE_SIZE)).add(offset);
-			Direction.allValues.forEach(function(i) {
-				if (cell.getFence(i)) {
-					let center = cellPos.add(TILE_SIZE / 2, TILE_SIZE / 2);
-					
-					let dir = Point.fromDirection(i).mul(TILE_SIZE / 2);
-					let left = Point.fromDirection(Direction.rotate90(i, -1)).mul(TILE_SIZE / 2 + 2);
-					let right = Point.fromDirection(Direction.rotate90(i, 1)).mul(TILE_SIZE / 2 + 2);
-					
-					ctx.strokeStyle = "#000000";
-					ctx.lineWidth = 4;
-					ctx.beginPath();
-					let startPos = center.add(dir).add(left);
-					let endPos = startPos.add(right.mul(2));
-					ctx.moveTo(startPos.x, startPos.y);
-					ctx.lineTo(endPos.x, endPos.y);
-					ctx.stroke();
-				}
-			});
-		}
-	}
-}
-
 class ActiveSelection {
 	constructor(game) {
 		this.game = game;
@@ -265,13 +129,14 @@ class ActiveSelection {
 		this.selectedRobot = robotId;
 		if (this.hasSelection()) {
 			for (let dir = 0; dir < 4; ++dir) {
-				this.directionMoves[dir] = this.game.board.doMove(this.game.getRobotPositions(), this.selectedRobot, dir);
+				this.directionMoves[dir] = []
+				this.game.board.doMove(this.game.getRobotPositions(), this.selectedRobot, dir, this.directionMoves[dir]);
 			}
 		}
 	}
 	
 	getMoveEndpoint(dir) {
-		return this.directionMoves[dir];
+		return this.directionMoves[dir][this.directionMoves[dir].length - 1];
 	}
 	
 	hasSelection() {
@@ -543,18 +408,17 @@ class MoveArrow {
 	}
 }
 
-function clearCanvas(canvas) {
-	let ctx = canvas.getContext("2d");
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
-}
-
 function drawGame(game, canvas, offset = new Point(0, 0)) {
 	clearCanvas(canvas);
 	drawBoard(game.board, canvas, offset);
 
+	if (game.originalRobotConfig != null) {
+		for (let i = 0; i < game.originalRobotConfig.length; ++i) {
+			drawStartPoint(game.originalRobotConfig[i], i, canvas, offset);
+		}
+	}
 
-	for (let i = 0; i < robots.length; ++i)
-	{
+	for (let i = 0; i < robots.length; ++i) {
 		robots[i].draw(canvas, offset);
 	}
 	
@@ -567,20 +431,23 @@ function drawGame(game, canvas, offset = new Point(0, 0)) {
 		ctx.fillRect(currentDraw.x, currentDraw.y, TILE_SIZE, TILE_SIZE);
 	
 		for (let dir = 0; dir < 4; ++dir) {
-			// TODO: will need to cover the entire path (or at least all segments of the path) if we add bumpers
-			let extent = selection.getMoveEndpoint(dir);
-			let current = robots[selection.selectedRobot].getCell();
-			let delta = Point.fromDirection(dir);
-			while (!extent.equals(current)) {
-				current = current.add(delta);
-				currentDraw = current.mul(TILE_SIZE).add(offset);
-				ctx.fillRect(currentDraw.x, currentDraw.y, TILE_SIZE, TILE_SIZE);
-				
-				if (current.x < 0 || current.y < 0 || current.x >= game.board.size.x || current.y >= game.board.size.y) {
-					selection.setRobot(selection.selectedRobot);
-					break;
+			current = robots[selection.selectedRobot].getCell();
+			for (let segment = 1; segment < selection.directionMoves[dir].length; ++segment) {
+				// TODO: will need to cover the entire path (or at least all segments of the path) if we add bumpers
+				let extent = selection.directionMoves[dir][segment];
+				let delta = selection.directionMoves[dir][segment].sub(selection.directionMoves[dir][segment - 1]);
+				delta = Point.fromDirection(delta.getDirection());
+				while (!extent.equals(current)) {
+					current = current.add(delta);
+					currentDraw = current.mul(TILE_SIZE).add(offset);
+					ctx.fillRect(currentDraw.x, currentDraw.y, TILE_SIZE, TILE_SIZE);
+					
+					if (current.x < 0 || current.y < 0 || current.x >= game.board.size.x || current.y >= game.board.size.y) {
+						selection.setRobot(selection.selectedRobot);
+						break;
+					}
 				}
-			} 
+			}
 		}
 		ctx.globalAlpha = 1.0;
 	}
@@ -588,15 +455,6 @@ function drawGame(game, canvas, offset = new Point(0, 0)) {
 	if (game.currentGoal != null) {
 		drawGoal(game.currentGoal, canvas, game.board.size.mul(TILE_SIZE / 2.0).sub(TILE_SIZE / 2.0, TILE_SIZE / 2.0));
 	}
-}
-
-function getMousePos(canvas, event) {
-	let rect = canvas.getBoundingClientRect();
-	return new Point(event.clientX - rect.left, event.clientY - rect.top);
-}
-
-function getCellFromPos(mousePos) {
-	return new Point(intdiv(mousePos.x, TILE_SIZE), intdiv(mousePos.y, TILE_SIZE));
 }
 
 function updateUI() {
@@ -853,7 +711,7 @@ function epochDeltaToTime(deltaTime) {
 }
 
 function canDoMoves() {
-	return isClientSolving() || isAnyOf(game.state, State.Free, State.End);
+	return playerId != null && (isClientSolving() || isAnyOf(game.state, State.Free, State.End));
 }
 
 function isClientSolving() {
@@ -870,7 +728,10 @@ function doDirectionMove(direction) {
 			updateUI();
 		}
 		socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
-		robots[selection.selectedRobot].moveTo(target);
+		for (let i = 1; i < selection.directionMoves[direction].length; ++i) {
+			robots[selection.selectedRobot].moveTo(selection.directionMoves[direction][i]);
+		}
+		
 		return true;
 	}
 	return false;
@@ -885,18 +746,19 @@ canvas.addEventListener('click', function(evt) {
 	
 	if (canDoMoves()) {
 		if (selection.hasSelection()) {
-			if (isFree && evt.shiftKey) {
-				if (arrayFind(game.robots, cellPos) == -1) {
-					socket.send(`FREE_MOVE_ROBOT ${selection.selectedRobot} ${cellPos.x} ${cellPos.y}`);
-					robots[selection.selectedRobot].moveTo(cellPos);
-					didAction = true;
-				}
-			} else {
-				let direction = cellPos.sub(robots[selection.selectedRobot].getCell()).getDirection();
-				if (direction != null) {
-					let target = selection.getMoveEndpoint(direction);
-					if (target.equals(cellPos)) {
-						didAction = doDirectionMove(direction);
+			if (!robots[selection.selectedRobot].getCell().equals(cellPos)) {
+				if (isFree && evt.shiftKey) {
+					if (arrayFind(game.robots, cellPos) == -1) {
+						socket.send(`FREE_MOVE_ROBOT ${selection.selectedRobot} ${cellPos.x} ${cellPos.y}`);
+						robots[selection.selectedRobot].moveTo(cellPos);
+						didAction = true;
+					}
+				} else {
+					for (let dir = 0; dir < 4; ++dir) {
+						let target = selection.getMoveEndpoint(dir);
+						if (target.equals(cellPos)) {
+							didAction = doDirectionMove(dir);
+						}
 					}
 				}
 			}
@@ -1259,17 +1121,24 @@ function processRobotReset(args) {
 
 function processRobotMove(args) {
 	let robotId = parseInt(args[0]);
-	let orig = robots[robotId].positionQueue[0];
-	let dest = new Point(parseInt(args[1]), parseInt(args[2]));
+	let moveList = [];
 
-	robots[robotId].moveTo(dest);
-	
+	for (let i = 1; i < args.length; i += 2) {
+		let dest = new Point(parseInt(args[i]), parseInt(args[i + 1]));
+		moveList.push(dest);
+	}
+
+	if (!moveList[moveList.length - 1].equals(robots[robotId].getCell())) {
+		for (let i = 0; i < moveList.length; ++i) {
+			robots[robotId].moveTo(moveList[i]);
+		}
+	}
 	if (selection.selectedRobot == robotId) {
 		selection.setRobot(selection.selectedRobot);
 	}
 	
-	if (args.length > 3) {
-		moveCount = parseInt(args[3]);
+	if (args.length % 2 == 0) {
+		moveCount = parseInt(args[args.length - 1]);
 	}
 
 	if (game.state == State.Demo) {
@@ -1365,9 +1234,9 @@ document.getElementById('demo').onclick = voteViewOptimal;
 window.requestAnimationFrame(loop);
 
 // TODO:
-// - Add the other boards and make board randomization work
 // - Add bumpers
 // - Demo state: optionally show the best available solution at the end of the round
+// - Add a proper random-board generation system
 // - Clean up the UI, make it clearer when the state and round transition changes
 
 </script>
