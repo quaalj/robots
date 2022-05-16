@@ -222,6 +222,12 @@ function makeGameStateCommand() {
 	let command = `SET_STATE ${game.state}`;
 	if (game.currentGoal != null) {
 		command += ` ${game.currentGoal.toInt()}`;
+	} else {
+		command += ` -1`
+	}
+
+	if (game.state == State.Demo) {
+		command += ` ${demoSequence.length}`;
 	}
 	return command;
 }
@@ -384,7 +390,7 @@ function makeStartSolveCommand() {
 }
 
 function makeDemoReadyCommand() {
-	return `DEMO_READY ${demoSequence.length}`;
+	return `DEMO_READY`;
 }
 
 function makeRobotFinalPositionCommand() {

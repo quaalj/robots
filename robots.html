@@ -222,6 +222,7 @@ let redoStack = [];
 let moveCount = null;
 
 let demoAvailable = false;
+let demoLength = -1;
 let arrowSequence = [];
 
 let playerId = null;
@@ -908,7 +909,7 @@ function doServerCommand(command, args) {
 	} else if (command == 'PLAYER_VOTE') {
 		processPlayerVote(args);
 	} else if (command == 'DEMO_READY') {
-		demoAvailable = args[0];
+		demoAvailable = true;
 	} else if (command == 'FINAL_POSITION') {
 		processFinalPosition(args);
 	}
@@ -1010,6 +1011,7 @@ function processSetState(args) {
 		if (isAnyOf(game.state, State.Bid, State.Solve, State.Demo, State.Free)) {
 			game.currentGoal = Goal.fromInt(parseInt(args[1]));
 			moveCount = 0;
+			demoLength = -1;
 		}
 	}
 	if (game.state == State.Bid) {
@@ -1020,10 +1022,11 @@ function processSetState(args) {
 	}
 
 	if (game.state == State.Demo) {
-		game.resetRobotPositions();
+		demoLength = parseInt(args[2]);
+
 		clearMoveArrows();
 
-		document.getElementById('solution_indicator').textContent = `The computer found: ${demoAvailable}`;
+		document.getElementById('solution_indicator').textContent = `The computer found: ${demoLength}`;
 	}
 
 	selection.clearSelection();
@@ -1140,16 +1143,18 @@ function processRobotMove(args) {
 	}
 
 	if (moveList.length > 0 && !moveList[moveList.length - 1].equals(robots[robotId].getCell())) {
+		let lastPos = robots[robotId].getCell();
 		for (let i = 0; i < moveList.length; ++i) {
 			robots[robotId].moveTo(moveList[i]);
+			if (game.state == State.Demo) {
+				arrowSequence.push(new MoveArrow(lastPos, moveList[i], robotId, game))
+			}
+			lastPos = moveList[i];
 		}
 	}
+
 	if (selection.selectedRobot == robotId) {
 		selection.setRobot(selection.selectedRobot);
-	}
-
-	if (game.state == State.Demo) {
-		arrowSequence.push(new MoveArrow(orig, dest, robotId, game))
 	}
 
 	updateUI();
