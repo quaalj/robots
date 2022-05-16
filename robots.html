@@ -212,25 +212,27 @@ class Robot {
 }
 
 // Globals
-var game = new Game();
-var robots = [];
+let game = new Game();
+let robots = [];
 
-var selection = new ActiveSelection(game);
-var canvas = document.getElementById("MainCanvas");
-var moveSequence = [];
-var redoStack = [];
-var moveCount = null;
+let selection = new ActiveSelection(game);
+let canvas = document.getElementById("MainCanvas");
+let moveSequence = [];
+let redoStack = [];
+let moveCount = null;
 
-var demoAvailable = false;
-var arrowSequence = [];
+let demoAvailable = false;
+let arrowSequence = [];
 
-var playerId = null;
-var currentSolvingPlayer = null;
+let playerId = null;
+let currentSolvingPlayer = null;
 
-var serverTimeDelta = 0;
-var serverBidStartTime = null;
+let serverTimeDelta = 0;
+let serverBidStartTime = null;
 
-var socket = null;
+let socket = null;
+
+let timeSyncTimeoutId = null;
 
 class MoveArrow {
 	static cellHCount = Array(game.board.width * game.board.height).fill(0);
@@ -721,18 +723,19 @@ function isClientSolving() {
 function doDirectionMove(direction) {
 	if (selection.hasSelection()) {
 		let target = selection.getMoveEndpoint(direction);
-		if (game.state == State.Solve) {
-			moveSequence.push(new RobotMove(robots[selection.selectedRobot].getCell(), direction, null, robots[selection.selectedRobot].color));
-			redoStack = [];
-			moveCount = moveSequence.length;
-			updateUI();
+		if (!target.equals(robots[selection.selectedRobot].getCell())) {
+			if (game.state == State.Solve) {
+				moveSequence.push(new RobotMove(robots[selection.selectedRobot].getCell(), direction, null, robots[selection.selectedRobot].color));
+				redoStack = [];
+				moveCount = moveSequence.length;
+				updateUI();
+			}
+			socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
+			for (let i = 1; i < selection.directionMoves[direction].length; ++i) {
+				robots[selection.selectedRobot].moveTo(selection.directionMoves[direction][i]);
+			}
+			return true;
 		}
-		socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
-		for (let i = 1; i < selection.directionMoves[direction].length; ++i) {
-			robots[selection.selectedRobot].moveTo(selection.directionMoves[direction][i]);
-		}
-		
-		return true;
 	}
 	return false;
 }
@@ -922,9 +925,11 @@ function processPlayerVote(args) {
 function processStartSolve(args) {
 	currentSolvingPlayer = parseInt(args[0]);
 	serverBidStartTime = parseInt(args[1]);
-	moveCount = null;
+	moveCount = 0;
 	moveSequence = []
 	redoStack = []
+
+	updateUI();
 }
 
 function processStartTimer(args) {
@@ -1004,6 +1009,7 @@ function processSetState(args) {
 	if (args.length > 1) {
 		if (isAnyOf(game.state, State.Bid, State.Solve, State.Demo, State.Free)) {
 			game.currentGoal = Goal.fromInt(parseInt(args[1]));
+			moveCount = 0;
 		}
 	}
 	if (game.state == State.Bid) {
@@ -1121,14 +1127,19 @@ function processRobotReset(args) {
 
 function processRobotMove(args) {
 	let robotId = parseInt(args[0]);
+
+	if (game.state == State.Solve) {
+		moveCount = parseInt(args[1]);
+	}
+	
 	let moveList = [];
 
-	for (let i = 1; i < args.length; i += 2) {
+	for (let i = 2; i < args.length; i += 2) {
 		let dest = new Point(parseInt(args[i]), parseInt(args[i + 1]));
 		moveList.push(dest);
 	}
 
-	if (!moveList[moveList.length - 1].equals(robots[robotId].getCell())) {
+	if (moveList.length > 0 && !moveList[moveList.length - 1].equals(robots[robotId].getCell())) {
 		for (let i = 0; i < moveList.length; ++i) {
 			robots[robotId].moveTo(moveList[i]);
 		}
@@ -1136,17 +1147,13 @@ function processRobotMove(args) {
 	if (selection.selectedRobot == robotId) {
 		selection.setRobot(selection.selectedRobot);
 	}
-	
-	if (args.length % 2 == 0) {
-		moveCount = parseInt(args[args.length - 1]);
-	}
 
 	if (game.state == State.Demo) {
 		arrowSequence.push(new MoveArrow(orig, dest, robotId, game))
 	}
-}
 
-var timeSyncTimeoutId = null;
+	updateUI();
+}
 
 function doTimeSync() {
 	if (timeSyncTimeoutId != null) {

@@ -160,11 +160,11 @@ export const Direction = makeEnum(['Left', 'Up', 'Right', 'Down'], {
 			if (direction == Direction.Up) {
 				return Direction.Right;
 			}
-			if (direction == Direction.Right) {
-				return Direction.Up;
-			}
 			if (direction == Direction.Left) {
 				return Direction.Down;
+			}
+			if (direction == Direction.Right) {
+				return Direction.Up;
 			}
 			if (direction == Direction.Down) {
 				return Direction.Left;
@@ -173,11 +173,11 @@ export const Direction = makeEnum(['Left', 'Up', 'Right', 'Down'], {
 			if (direction == Direction.Up) {
 				return Direction.Left;
 			}
-			if (direction == Direction.Left) {
-				return Direction.Up;
-			}
 			if (direction == Direction.Right) {
 				return Direction.Down;
+			}
+			if (direction == Direction.Left) {
+				return Direction.Up;
 			}
 			if (direction == Direction.Down) {
 				return Direction.Right;

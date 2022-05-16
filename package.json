@@ -1,7 +1,12 @@
 {
   "dependencies": {
     "async-mutex": "^0.3.2",
-    "date-and-time": "^2.3.1"
+    "date-and-time": "^2.3.1",
+    "jasmine": "^4.1.0",
+    "assert": "^2.0.0"
   },
-  "type":"module"
+  "type":"module",
+  "scripts": {
+    "test": "jasmine"
+  }
 }

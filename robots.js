@@ -524,9 +524,17 @@ export class Board {
 	doMove(robots, robotIdx, moveDir, outList = null) {
 		let blocked = false;
 		let robotPos = robots[robotIdx];
+
+		console.assert(!isNaN(robotPos.x));
+		console.assert(!isNaN(robotPos.y));
+
 		let delta = Point.fromDirection(moveDir);
 		
+		console.assert(!isNaN(delta.x));
+		console.assert(!isNaN(delta.y));
+
 		if (outList != null) {
+			outList.length = 0;
 			outList.push(robotPos);
 		}
 
@@ -568,7 +576,8 @@ export class Board {
 				if (outList != null) {
 					outList.push(robotPos);
 				}
-				delta = Point.fromDirection(Direction.bumperSlant(moveDir, cell.bumper.slant));
+				moveDir = Direction.bumperSlant(moveDir, cell.bumper.slant);
+				delta = Point.fromDirection(moveDir);
 			}
 		}
 
@@ -689,12 +698,13 @@ export function generateRobotPlacement(board, rand) {
 		}
 		
 		let cell = board.getCell(point);
+
+		testedSpots[point] = result.length;
 		
-		if (cell.fullyFenced() || cell.goal != null) {
+		if (cell.fullyFenced() || cell.goal != null || cell.bumper != null) {
 			continue;
 		}
 		
-		testedSpots[point] = result.length;
 		result.push(point);
 	}
 	

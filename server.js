@@ -329,18 +329,23 @@ function makeRobotMoveAllCommand() {
 
 function makeRobotMoveCommand(robotId, moves = null) {
 	let pos = game.robots[robotId];
-	if (moves == null) {
+	if (moves == null || moves.length == 0) {
 		moves = [pos];
 	}
-
+	
 	let command = `ROBOT_MOVE ${robotId}`;
+
+	// Always pass the move sequence ID, even if it's not meaningful
+	if (game.state == State.Solve) {
+		command += ` ${moveSequence.length}`;
+	} else {
+		command += ' 0';
+	}
+
 	for (let i = 0; i < moves.length; ++i) {
 		command += ` ${moves[i].x} ${moves[i].y}`;
 	}
-	
-	if (game.state == State.Solve) {
-		command += ` ${moveSequence.length}`;
-	}
+
 	return command;
 }
 
@@ -642,21 +647,24 @@ function doCommand(client, command, args) {
 				moveSequence.push(new RobotMove(game.robots[robotId], direction, null, robotId));
 			}
 			let outMoves = []
-			game.moveRobot(robotId, direction, outMoves);
-			let commands = [makeRobotMoveCommand(robotId, outMoves.slice(1))];
+			let originalRobotPosition = game.robots[robotId];
+			let result = game.moveRobot(robotId, direction, outMoves);
+			if (!originalRobotPosition.equals(result)) {
+				let commands = [makeRobotMoveCommand(robotId, outMoves.slice(1))];
 			
-			if (game.state == State.Solve && game.getSolvingPlayer() == client.playerId) {
-				let currentBid = game.playerBids[game.currentSolveBid];
-				
-				if (moveSequence.length <= currentBid.amount && game.checkSolveSolution()) {
-					clearTimer();
-					let playerCommands = [];
-					commands.push(makeGivePlayerTokensCommand(client.playerId, game.currentGoal));
-					commands.push(makeGameStateCommand(game.state));
+				if (game.state == State.Solve && game.getSolvingPlayer() == client.playerId) {
+					let currentBid = game.playerBids[game.currentSolveBid];
+					
+					if (moveSequence.length <= currentBid.amount && game.checkSolveSolution()) {
+						clearTimer();
+						let playerCommands = [];
+						commands.push(makeGivePlayerTokensCommand(client.playerId, game.currentGoal));
+						commands.push(makeGameStateCommand(game.state));
+					}
 				}
+	
+				sendAll(commands.join('\n'));
 			}
-
-			sendAll(commands.join('\n'));
 		}
 	} else if (command == 'REDO_ROBOT') {
 		if (client.playerId != null && game.getState() == State.Solve && game.playerAllowedMove(client.playerId) && redoStack.length > 0) {
