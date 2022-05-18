@@ -60,7 +60,7 @@ div.player_div {
 </span>
 
 <span class="playing free end">
-	<button id="demo" class="playing free end">View Optimal</button>
+	<button id="demo">View Optimal</button>
 	<button id="reset_robots">Reset Robots</button>
 	<button id="next" class="playing free">Next Round</button>
 	<br>
@@ -103,6 +103,23 @@ const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 // length of shortest path is sent by message from server
 // don't want people cheating...
 const QUIET_MODE = false;
+
+let bidInput = document.getElementById('bid_input');
+let nameInput = document.getElementById('name_input');
+let revertButton = document.getElementById('revert');
+let undoButton = document.getElementById('undo');
+let redoButton = document.getElementById('redo');
+let skipSolveButton = document.getElementById('skip');
+let bidButton = document.getElementById('bid');
+let joinButton = document.getElementById('join_game');
+let leaveButton = document.getElementById('leave_game');
+let renameButton = document.getElementById('rename_button');
+let nextRoundButton = document.getElementById('next');
+let gentlemanButton = document.getElementById('gentleman');
+let resetRobotsButton = document.getElementById('reset_robots');
+let skipDemoButton = document.getElementById('skip_demo');
+let showDemoButton = document.getElementById('demo');
+let pendingFocusElement = nameInput;
 
 function getColorValueArrow(color) {
 	if (color == Color.Yellow) {
@@ -504,36 +521,44 @@ function updateUI() {
 	}
 	
 	if (playerId != null) {	
-		document.getElementById('revert').disabled = !(isClientSolving() && hasUndo());
-		document.getElementById('undo').disabled = !(isClientSolving() && hasUndo());
-		document.getElementById('redo').disabled = !(isClientSolving() && hasRedo());
+		revertButton.disabled = !(isClientSolving() && hasUndo());
+		undoButton.disabled = !(isClientSolving() && hasUndo());
+		redoButton.disabled = !(isClientSolving() && hasRedo());
 		
-		let bidInput = document.getElementById('bid_input');
 		bidInput.disabled = !canEnterBid();
-		document.getElementById('bid').disabled = !canBid();
+		bidButton.disabled = !canBid();
 		
 		let currentBid = game.getBid(playerId);
+		let currBidElement = document.getElementById('curr_bid');
 		if (currentBid != null) {
-			document.getElementById('curr_bid').textContent = `Current Bid: ${currentBid.amount}`;
+			currBidElement.textContent = `Current Bid: ${currentBid.amount}`;
 		} else {
-			document.getElementById('curr_bid').textContent = "";
+			currBidElement.textContent = "";
 		}
 		
 		let player = game.getPlayer(playerId);
 		
-		document.getElementById('gentleman').disabled = player.vote == 'SKIPBID';
-		document.getElementById('next').disabled = player.vote == 'NEXT';
-		document.getElementById('skip_demo').disabled = player.vote == 'SKIPDEMO';
-		document.getElementById('demo').disabled = (player.vote == 'DEMO' || !demoAvailable);
+		gentlemanButton.disabled = player.vote == 'SKIPBID';
+		nextRoundButton.disabled = player.vote == 'NEXT';
+		skipDemoButton.disabled = player.vote == 'SKIPDEMO';
+		showDemoButton.disabled = (player.vote == 'DEMO' || !demoAvailable);
 		
 		document.getElementById('name').textContent = "" + player.name;
 		document.getElementById('score').textContent = "" + player.getScore();
 	}
 	
-	let nameInput = document.getElementById('name_input');
-	let disabled = nameInput.value.length == 0;
-	document.getElementById('join_game').disabled = disabled;
-	document.getElementById('rename_button').disabled = disabled;
+	let namingDisabled = !canRename();
+	joinButton.disabled = namingDisabled;
+	renameButton.disabled = namingDisabled;
+
+	if (pendingFocusElement != null) {
+		pendingFocusElement.focus();
+		pendingFocusElement = null;
+	}
+}
+
+function canRename() {
+	return nameInput.value.length > 0;
 }
 
 function skipSolve() {
@@ -567,7 +592,7 @@ function voteViewOptimal() {
 }
 
 function joinGame() {
-	let nameValue = document.getElementById('name_input').value;
+	let nameValue = nameInput.value;
 	if (nameValue.length > 0) {
 		if (socket != null) {
 			socket.send(`JOIN_GAME ${nameValue}`);
@@ -584,11 +609,12 @@ function leaveGame() {
 			socket.send(`LEAVE_GAME ${playerId}`);
 		}
 		playerId = null;
+		pendingFocusElement = nameInput;
 	}
 }
 
 function tryRename() {
-	let nameValue = document.getElementById('name_input').value;
+	let nameValue = nameInput.value;
 	if (playerId != null && nameValue.length > 0 && nameValue != game.getPlayer(playerId).name) {
 		game.renamePlayer(playerId, nameValue);
 		if (socket != null) {
@@ -615,9 +641,9 @@ function canBid() {
 }
 
 function getCurrentBidInputValue() {
-	let bidText = document.getElementById('bid_input');
-	if (bidText.value.length > 0) {
-		let asInt = parseInt(bidText.value);
+	let bidText = bidInput.value;
+	if (bidText.length > 0) {
+		let asInt = parseInt(bidText);
 		return asInt;
 	}
 	return 0;
@@ -625,10 +651,9 @@ function getCurrentBidInputValue() {
 
 function executeBid() {
 	if (canBid()) {
-		let bidText = document.getElementById('bid_input');
 		let asInt = getCurrentBidInputValue();
 		if (asInt > 1) {
-			bidText.value = '';
+			bidInput.value = '';
 			if (socket != null) {
 				socket.send(`MAKE_BID ${asInt}`);
 			} else {
@@ -880,7 +905,7 @@ function doServerCommand(command, args) {
 	} else if (command == 'REJECT_CLIENT') {
 		processRejectClient(args);
 	} else if (command == 'ASSIGN_PLAYER') {
-		playerId = parseInt(args[0]);
+		processAssignPlayer(args);
 	} else if (command == 'NEW_BOARD') {
 		processNewBoard(args);
 	} else if (command == 'PLAYER_JOINED') {
@@ -1016,16 +1041,14 @@ function processSetState(args) {
 	}
 	if (game.state == State.Bid) {
 		game.resetBids();
-		$(`.player_bid`).text('');
-
+		$('.player_bid').text('');
 		demoAvailable = false;
+		pendingFocusElement = bidInput;
 	}
 
 	if (game.state == State.Demo) {
 		demoLength = parseInt(args[2]);
-
 		clearMoveArrows();
-
 		document.getElementById('solution_indicator').textContent = `The computer found: ${demoLength}`;
 	}
 
@@ -1035,6 +1058,13 @@ function processSetState(args) {
 	moveSequence = []
 	redoStack = []
 	moveCount = null;
+}
+
+function processAssignPlayer(args) {
+	playerId = parseInt(args[0]);
+	if (game.state == State.Bid) {
+		pendingFocusElement = bidInput;
+	}
 }
 
 function processRejectClient(args) {
@@ -1218,35 +1248,57 @@ window.onbeforeunload = function() {
     socket.close();
 };
 
-document.getElementById('bid_input').onkeypress = function(event) { return event.key in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]; };
-document.getElementById('bid_input').onkeyup = function(event) {
+bidInput.onkeypress = function(event) { return event.key in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]; };
+bidInput.onkeyup = function(event) {
 	if (event.keyCode === 13) {
 		// Cancel the default action, if needed
 		event.preventDefault();
-		// Trigger the button element with a click
-		document.getElementById("bid").click();
+		// Trigger the bid
+		if (canBid()) {
+			executeBid();
+		}
 	}
 };
 
-document.getElementById('revert').onclick = revertMoves;
-document.getElementById('undo').onclick = undoMove;
-document.getElementById('redo').onclick = redoMove;
-document.getElementById('skip').onclick = skipSolve;
-document.getElementById('bid').onclick = executeBid;
-document.getElementById('join_game').onclick = joinGame;
-document.getElementById('leave_game').onclick = leaveGame;
-document.getElementById('rename_button').onclick = tryRename;
-document.getElementById('next').onclick = voteNextRound;
-document.getElementById('gentleman').onclick = voteGentleman;
-document.getElementById('reset_robots').onclick = revertMoves;
+nameInput.onkeyup = function(event) {
+	if (event.keyCode === 13) {
+		// Cancel the default action, if needed
+		event.preventDefault();
+		if (canRename()) {
+			// Trigger a join or rename
+			if (playerId == null) {
+				joinGame();
+			} else {
+				tryRename();
+			}
+		}
+	}
+}
 
-document.getElementById('skip_demo').onclick = voteSkipDemo;
-document.getElementById('demo').onclick = voteViewOptimal;
+function defaultClickLambda(fn) {
+	return function(ev) {
+		fn();
+		ev.preventDefault();
+	}
+}
+
+revertButton.onclick = revertMoves;
+undoButton.onclick = undoMove;
+redoButton.onclick = redoMove;
+skipSolveButton.onclick = skipSolve;
+bidButton.onclick = executeBid;
+joinButton.onclick = joinGame;
+leaveButton.onclick = leaveGame;
+renameButton.onclick = tryRename;
+nextRoundButton.onclick = voteNextRound;
+gentlemanButton.onclick = voteGentleman;
+resetRobotsButton.onclick = revertMoves;
+skipDemoButton.onclick = voteSkipDemo;
+showDemoButton.onclick = voteViewOptimal;
 
 window.requestAnimationFrame(loop);
 
 // TODO:
-// - Add bumpers
 // - Demo state: optionally show the best available solution at the end of the round
 // - Add a proper random-board generation system
 // - Clean up the UI, make it clearer when the state and round transition changes
