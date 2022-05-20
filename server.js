@@ -237,7 +237,11 @@ function makeStartTimerCommand() {
 }
 
 function makeBoardCommand() {
-	return `NEW_BOARD ${game.robots.length} ${game.seed}`;
+	let command = `NEW_BOARD ${game.robots.length} ${game.seed}`;
+	if (game.tokensToWin != null) {
+		command += ` ${game.tokensToWin}`;
+	}
+	return command;
 }
 
 function makePlayerVoteCommand(player) {
@@ -247,7 +251,7 @@ function makePlayerVoteCommand(player) {
 function syncGame(client) {
 	let commands = [];
 	commands.push(makeBoardCommand());
-	commands.push(makeGameStateCommand(game.state));
+	
 	if (game.originalRobotConfig != null) {
 		commands.push(makeRobotResetCommand());
 	}
@@ -287,6 +291,8 @@ function syncGame(client) {
 	} else if (game.state == State.Demo) {
 		commands.push(makeRobotFinalPositionCommand());
 	}
+
+	commands.push(makeGameStateCommand(game.state));
 
 	client.socket.send(commands.join('\n'));
 }
@@ -586,6 +592,7 @@ function clearVotes() {
 
 function doCommand(client, command, args) {
 	if (command == 'SYNC_TIME') {
+		// Use a constant time offset to ensure we are actually synchronizing
 		client.socket.send(makeTimeSyncCommand(args[0], Date.now() + 123456));
 	} else if (command == 'JOIN_GAME') {
 		let desiredName = game.makeValidName(args[0]);

@@ -913,15 +913,18 @@ export class Game {
 		this.bidTimeout = 60.0;
 		this.solveTimeout = 60.0;
 		this.earlyOut = 2;
+
+		this.tokensToWin = null;
 		
 		this.players = {};
 		this.timerCountdown = null;
-		
+
 		this.resetGame(4, 0);
 	}
 	
-	resetGame(numRobots, boardSeed) {
+	resetGame(numRobots, boardSeed, tokensToWin = null) {
 		this.seed = boardSeed;
+		this.tokensToWin = tokensToWin;
 		this.rand = new Mulberry32(boardSeed);
 		this.board = generateBoard(this.rand.randRaw());
 		this.robots = [];
@@ -971,18 +974,11 @@ export class Game {
 		return forceId;
 	}
 
-	getPlayers(sorted = false) {
+	getPlayers() {
 		let players = [];
 		for (let playerId in this.players) {
 			players.push(this.players[playerId]);
 		}
-
-		if (sorted) {
-			players.sort(function(x, y) {
-				return x.tokens.length - y.tokens.length;
-			});
-		}
-
 		return players;
 	}
 
@@ -1150,9 +1146,42 @@ export class Game {
 		this.playerBids = [];
 	}
 
+	getSortedPlayers() {
+		let players = this.getPlayers();
+		players.sort((lhs, rhs) => rhs.getScore() - lhs.getScore());
+		return players;
+	}
+
+	getLeadPlayers() {
+		let players = this.getSortedPlayers();
+		let topScore = null;
+		for (let i = 0; i < players.length; ++i) {
+			if (topScore == null) {
+				topScore = players[i].getScore();
+			} else if (players[i].getScore() < topScore) {
+				return players.slice(0, i - 1);
+			}
+		}
+		return players;
+	}
+
+	getWinners() {
+		let leaders = this.getLeadPlayers();
+		if (leaders.length > 0) {
+			if (this.goalsRemaining.length == 0 || leaders[0].getScore() >= this.tokensToWin && leaders.length == 1) {
+				return leaders;
+			}
+		}
+		return null;
+	}
+
+	isGameOver() {
+		return this.getWinners() != null;
+	}
+
 	startBidState() {
 		this.clearVotes();
-		if (this.goalsRemaining.length > 0) {
+		if (!this.isGameOver()) {
 			this.state = State.Bid;
 			let targetGoalIdx = Math.floor(this.rand.randFloat() * this.goalsRemaining.length);
 			this.currentGoal = this.goalsRemaining[targetGoalIdx];
@@ -1173,8 +1202,8 @@ export class Game {
 			this.currentSolveBid = null;
 			this.resetBids();
 			this.originalRobotConfig = this.getRobotPositions();
-		} else {
-			this.state = State.End;
+		} else if (this.state != State.End) {
+			this.startFreeState();
 		}
 	}
 	
@@ -1226,7 +1255,7 @@ export class Game {
 	
 	startFreeState() {
 		this.clearVotes();
-		this.state = State.Free;
+		this.state = this.isGameOver() ? State.End : State.Free;
 		this.timerStartTime = null;
 		this.currentSolveBid = null;
 		this.playerBids = [];

@@ -771,7 +771,7 @@ canvas.addEventListener('click', function(evt) {
 	let cellPos = getCellFromPos(mousePos);
 	
 	let didAction = false;
-	let isFree = game.state == State.Free;
+	let isFree = isAnyOf(game.state, State.Free, State.End);
 	
 	if (canDoMoves()) {
 		if (selection.hasSelection()) {
@@ -945,7 +945,7 @@ function processPlayerVote(args) {
 	let player = game.getPlayer(playerId);
 	player.vote = args[1];
 
-	$(`#${makePlayerDivId(playerId)} > .player_vote`).text(`Vote: ${player.vote}`);
+	$(`#${makePlayerNodeId(playerId)} > .player_vote`).text(`Vote: ${player.vote}`);
 }
 
 function processStartSolve(args) {
@@ -983,7 +983,7 @@ function processGiveTokens(args) {
 
 	let player = game.getPlayer(targetPlayerId);
 
-	$(`#${makePlayerDivId(targetPlayerId)} > .player_score`).text(`Score: ${player.tokens.length}`);
+	$(`#${makePlayerNodeId(targetPlayerId)} > .player_score`).text(`Score: ${player.tokens.length}`);
 	updateTokenCount();
 }
 
@@ -997,17 +997,17 @@ function processFinalPosition(args) {
 }
 
 function updateTokenCount() {
-	if (game.goalsRemaining.length == 0) {
-		let players = game.getPlayers(true);
-		$('#game_info').text(`${players[0].name} wins!`);
+	let winners = game.getWinners();
+	if (winners != null && winners.length > 0) {
+		let winPlural = winners.length == 1 ? 'wins' : 'win';
+		$('#game_info').text(`${winners.map(p => p.name).join(', ')} ${winPlural}!`);
 	} else {
-		$('#game_info').text(`Tokens Remaining: ${game.goalsRemaining.length}`);
+		let infoText = `Tokens Remaining: ${game.goalsRemaining.length}`;
+		if (game.tokensToWin != null) {
+			infoText += ` | Tokens To Win: ${game.tokensToWin}`;
+		}
+		$('#game_info').text(infoText);
 	}
-}
-
-function setWinner(playerId) {
-	let player = game.getPlayer(playerId);
-	
 }
 
 function processNewBoard(args) {
@@ -1015,8 +1015,12 @@ function processNewBoard(args) {
 	console.assert(numRobots != Number.NaN);
 	let boardSeed = parseInt(args[1]);
 	console.assert(boardSeed != Number.NaN);
+	let tokensToWin = null;
+	if (args.length > 2) {
+		tokensToWin = parseInt(args[2]);
+	}
 	
-	game.resetGame(numRobots, boardSeed);
+	game.resetGame(numRobots, boardSeed, tokensToWin);
 	
 	robots = [];
 	for (let i = 0; i < game.robots.length; ++i) {
@@ -1052,6 +1056,18 @@ function processSetState(args) {
 		document.getElementById('solution_indicator').textContent = `The computer found: ${demoLength}`;
 	}
 
+	if (game.state == State.End) {
+		let rankings = game.getSortedPlayers();
+		let currentRank = 1;
+		for (let i = 0; i < rankings.length; ++i) {
+			if (i > 0 && rankings[i].getScore() < rankings[i-1].getScore()) {
+				currentRank = i + 1;
+			}
+			let playerNode = document.getElementById(makePlayerNodeId(rankings[i].id));
+			$(`#${makePlayerNodeId(playerId)} > .player_bid`).text(`Ranking: ${currentRank}`);
+		}
+	}
+
 	selection.clearSelection();
 	serverBidStartTime = null;
 	currentSolvingPlayer = null;
@@ -1072,7 +1088,7 @@ function processRejectClient(args) {
 	socket.close();
 }
 
-function makePlayerDivId(playerId) {
+function makePlayerNodeId(playerId) {
 	return `Player_${playerId}`;
 }
 
@@ -1083,7 +1099,7 @@ function processPlayerJoined(args) {
 	let playerDiv = document.getElementById('player_list');
 
 	const playerNode = document.createElement("div");
-	playerNode.id = makePlayerDivId(player.id);
+	playerNode.id = makePlayerNodeId(player.id);
 	playerNode.className = 'player_div';
 
 	const nameNode = document.createElement('span');
@@ -1115,9 +1131,9 @@ function processPlayerLeft(args) {
 	}
 	game.removePlayer(leftId);
 
-	let playerDiv = document.getElementById(makePlayerDivId(leftId));
-	if (playerDiv != null) {
-		playerDiv.parentNode.removeChild(playerDiv);
+	let playerNode = document.getElementById(makePlayerNodeId(leftId));
+	if (playerNode != null) {
+		playerNode.parentNode.removeChild(playerNode);
 	}
 }
 
@@ -1126,7 +1142,7 @@ function processRenamePlayer(args) {
 	let name = args[1];
 	game.renamePlayer(playerId, name);
 
-	$(`#${makePlayerDivId(playerId)} > .player_name`).text(name);
+	$(`#${makePlayerNodeId(playerId)} > .player_name`).text(name);
 }
 
 function processSetBid(args) {
@@ -1139,7 +1155,7 @@ function processSetBid(args) {
 		game.setBid(playerId, bid, timestamp);
 	}
 
-	$(`#${makePlayerDivId(playerId)} > .player_bid`).text(`Bid: ${bid}`);
+	$(`#${makePlayerNodeId(playerId)} > .player_bid`).text(`Bid: ${bid}`);
 }
 
 function processRobotReset(args) {
@@ -1299,7 +1315,6 @@ showDemoButton.onclick = voteViewOptimal;
 window.requestAnimationFrame(loop);
 
 // TODO:
-// - Demo state: optionally show the best available solution at the end of the round
 // - Add a proper random-board generation system
 // - Clean up the UI, make it clearer when the state and round transition changes
 
