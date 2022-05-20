@@ -461,6 +461,7 @@ function checkVoteState(players, state) {
 			player.vote = null;
 			continue;
 		}
+
 		numVotes += 1;
 		
 		if (player.vote in votes) {
@@ -616,6 +617,11 @@ function doCommand(client, command, args) {
 		sendAll(`PLAYER_RENAME ${playerId} ${newName}`);
 	} else if (command == 'MAKE_BID') {
 		if (client.playerId != null && game.getState() == State.Bid) {
+			let player = game.getPlayer(client.playerId);
+			if (!game.allowMultipleBids && player.bidAmount != null) {
+				return;
+			}
+
 			let bidAmount = parseInt(args[0]);
 			let isFirstBid = game.timerStartTime == null;
 			game.setBid(client.playerId, bidAmount);
@@ -626,13 +632,19 @@ function doCommand(client, command, args) {
 				commands.push(makeStartTimerCommand());
 				currentTimerId = setTimeout(endBidState, Math.floor(game.bidTimeout * 1000));
 			}
+
+			if (!game.allowMultipleBids) {
+				player.vote = 'SKIPBID';
+				commands.push(makePlayerVoteCommand(player))
+			}
 			
 			sendAll(commands.join('\n'));
 
-			// TODO: concat this with the previous commands
-			// Also TODO: don't send the timer if this is triggered (a bit of an edge case, since it occurs with only 1 player)
-			if (!game.allowMultipleBids && game.playerBids.length == game.getNumPlayers()) {
-				endBidState();
+			// TODO: figure out a way to concat this with the previous commands
+			// Also TODO: don't send the timer data if this is triggered on the first bid
+			let voteComplete = checkVoteState(game.players, game.state);
+			if (voteComplete != null) {
+				executeVote(voteComplete);
 			}
 		}
 	} else if (command == 'FREE_MOVE_ROBOT') {
@@ -703,8 +715,8 @@ function doCommand(client, command, args) {
 	} else if (command == 'VOTE') {
 		let player = game.getPlayer(client.playerId);
 		if (player.vote == null) {
-			let didVote = voteAllowedInState(game.state, args[0]);
-			if (didVote) {
+			let isValidVote = voteAllowedInState(game.state, args[0]);
+			if (isValidVote) {
 				player.vote = args[0];
 				let majorityVote = checkVoteState(game.players, game.state);
 				if (majorityVote == null) {
@@ -713,7 +725,7 @@ function doCommand(client, command, args) {
 					executeVote(majorityVote);
 				}
 			}
-		}
+		}	
 	}
 }
 
