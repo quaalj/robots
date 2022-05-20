@@ -913,7 +913,7 @@ export class Game {
 		this.bidTimeout = 60.0;
 		this.solveTimeout = 60.0;
 		this.earlyOut = 2;
-
+		
 		this.tokensToWin = null;
 		
 		this.players = {};
@@ -1168,7 +1168,7 @@ export class Game {
 	getWinners() {
 		let leaders = this.getLeadPlayers();
 		if (leaders.length > 0) {
-			if (this.goalsRemaining.length == 0 || leaders[0].getScore() >= this.tokensToWin && leaders.length == 1) {
+			if (this.goalsRemaining.length == 0 || (this.tokensToWin != null && leaders[0].getScore() >= this.tokensToWin && leaders.length == 1)) {
 				return leaders;
 			}
 		}

@@ -220,6 +220,10 @@ class Robot {
 	getColorValue() {
 		return getColorValue(this.color);
 	}
+
+	cancelTween() {
+		this.warpTo(this.getCell());
+	}
 	
 	draw(canvas, offset = new Point(0, 0)) {
 		let ctx = canvas.getContext("2d");
@@ -240,13 +244,14 @@ let moveCount = null;
 
 let demoAvailable = false;
 let demoLength = -1;
+let demoCurrentMove = null;
 let arrowSequence = [];
 
 let playerId = null;
 let currentSolvingPlayer = null;
 
 let serverTimeDelta = 0;
-let serverBidStartTime = null;
+let serverStartTime = null;
 
 let socket = null;
 
@@ -257,10 +262,11 @@ class MoveArrow {
 	static cellVCount = Array(game.board.width * game.board.height).fill(0);
 	static finalRobotPositions = [];
 
-	constructor(start, end, color, game) {
+	constructor(start, end, color, game, moveId) {
 		this.startPoint = start;
 		this.endPoint = end;
 		this.color = color;
+		this.moveId = moveId;
 		this.game = game;
 		this.tweenAlpha = 0;
 
@@ -299,7 +305,6 @@ class MoveArrow {
 		}
 
 		for(let i in this.game.robots) {
-
 			if(cell.equals(MoveArrow.finalRobotPositions[i])) {
 				result = true;
 			}
@@ -326,16 +331,22 @@ class MoveArrow {
 		}
 	}
 
-	updateCellCount() {
+	removeCellCount() {
+		this.updateCellCount(true);
+	}
+
+	updateCellCount(reverse = false) {
+		let delta = reverse ? -1 : 1;
+
 		let currPoint = this.startPoint;
 		let direction = Point.fromDirection(this.getDirection());
 		let cellArray = this.getCellArray();
 
-		cellArray[currPoint.y * game.board.height + currPoint.x]++;
+		cellArray[currPoint.y * game.board.height + currPoint.x] += delta;
 
 		do {
 			currPoint = currPoint.add(direction);
-			cellArray[currPoint.y * game.board.height + currPoint.x]++;
+			cellArray[currPoint.y * game.board.height + currPoint.x] += delta;
 		} while(!currPoint.equals(this.endPoint))
 	}
 
@@ -422,6 +433,10 @@ class MoveArrow {
 		ctx.stroke();
 	}
 
+	cancelTween() {
+		this.tweenAlpha = 1.0;
+	}
+
 	update(deltaTime) {
 		let dist = this.startPoint.lInfDist(this.endPoint);
 		this.tweenAlpha = Math.min(this.tweenAlpha + (deltaTime * ROBOT_TWEEN_SPEED) / dist, 1.0);
@@ -501,15 +516,15 @@ function updateUI() {
 	}
 
 	let timer = document.getElementById('timer');
-	if (serverBidStartTime != null) {
+	if (serverStartTime != null) {
 		let serverNow = Date.now() + serverTimeDelta;
-		let bidTimeElapsed = serverNow - serverBidStartTime;
+		let serverTimerElapsed = serverNow - serverStartTime;
 		if (game.state == State.Bid) {
-			let bidTimeLeft = Math.max((game.bidTimeout * 1000) - bidTimeElapsed, 0);
+			let bidTimeLeft = Math.max((game.bidTimeout * 1000) - serverTimerElapsed, 0);
 			timer.textContent = epochDeltaToTime(bidTimeLeft);
 		} else if (game.state == State.Solve) {
-			let bidTimeLeft = Math.max((game.solveTimeout * 1000) - bidTimeElapsed, 0);
-			timer.textContent = epochDeltaToTime(bidTimeLeft);
+			let solveTimeLeft = Math.max((game.solveTimeout * 1000) - serverTimerElapsed, 0);
+			timer.textContent = epochDeltaToTime(solveTimeLeft);
 		}
 	} else {
 		timer.textContent = "";
@@ -673,12 +688,22 @@ function undoMove() {
 	}
 	if (hasUndo()) {
 		let lastMove = moveSequence.pop();
-		robots[lastMove.color].warpTo(lastMove.position);
 		redoStack.push(lastMove);
 		moveCount = moveSequence.length;
 		if (socket != null) {
 			socket.send('UNDO_ROBOT');
 		}
+
+		let tempRobotPositions = game.getRobotPositions();
+		tempRobotPositions[lastMove.color] = lastMove.position;
+		let outMoves = [];
+		game.board.doMove(tempRobotPositions, lastMove.color, lastMove.direction, outMoves);
+
+		for (let i = outMoves.length - 2; i >= 0; --i) {
+			robots[lastMove.color].moveTo(outMoves[i]);
+		}
+
+		filterArrowSequence(moveCount);
 	}
 	updateUI();
 }
@@ -693,13 +718,12 @@ function redoMove() {
 	}
 	if (hasRedo()) {
 		let addMove = redoStack.pop();
-		let moveTarget = game.moveRobot(addMove.color, addMove.direction);
-		robots[addMove.color].warpTo(moveTarget);
 		moveSequence.push(addMove);
 		moveCount = moveSequence.length;
 		if (socket != null) {
 			socket.send('REDO_ROBOT');
 		}
+		moveRobotInDirection(addMove.color, addMove.direction, game.state == State.Solve, moveCount - 1);
 	}
 	updateUI();
 }
@@ -717,6 +741,7 @@ function revertMoves() {
 		moveSequence = [];
 		moveCount = 0;
 	}
+	clearMoveArrows();
 	updateUI();
 	
 	if (socket != null) {
@@ -757,13 +782,26 @@ function doDirectionMove(direction) {
 				updateUI();
 			}
 			socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
-			for (let i = 1; i < selection.directionMoves[direction].length; ++i) {
-				robots[selection.selectedRobot].moveTo(selection.directionMoves[direction][i]);
-			}
+			moveRobotInDirection(selection.selectedRobot, direction, isAnyOf(game.state, State.Solve, State.Demo), moveCount - 1);
 			return true;
 		}
 	}
 	return false;
+}
+
+function moveRobotInDirection(robotId, direction, addArrows = true, arrowMoveIndex = null) {
+	let outMoves = []
+	let target = game.board.doMove(game.getRobotPositions(), robotId, direction, outMoves);
+	if (!target.equals(robots[robotId].getCell())) {
+		let lastPos = robots[robotId].getCell();
+		for (let i = 1; i < outMoves.length; ++i) {
+			robots[robotId].moveTo(outMoves[i]);
+			if (addArrows) {
+				arrowSequence.push(new MoveArrow(lastPos, outMoves[i], robotId, game, arrowMoveIndex));
+			}
+			lastPos = outMoves[i];
+		}
+	}
 }
 
 canvas.addEventListener('click', function(evt) {
@@ -857,6 +895,14 @@ function clearMoveArrows() {
 	arrowSequence = [];
 }
 
+function filterArrowSequence(maxMove) {
+	let pastMove = arrowSequence.findIndex(a => a.moveId >= maxMove);
+	if (pastMove >= 0) {
+		arrowSequence.slice(pastMove).forEach(a => a.removeCellCount());
+		arrowSequence = arrowSequence.slice(0, pastMove);
+	}
+}
+
 let lastLoop = 0;
 function loop(timestamp) {
 	let deltaTime = (timestamp - lastLoop) / 1000.0;
@@ -870,11 +916,20 @@ function loop(timestamp) {
 	
 	drawGame(game, canvas);
 
-	if(game.state == State.Demo) {
+	if(isAnyOf(game.state, State.Solve, State.Demo)) {
+		let didTween = false;
 		for(let i in arrowSequence) {
+			if (game.state == State.Demo && demoCurrentMove <= arrowSequence[i].moveId) {
+				break;
+			}
+
 			arrowSequence[i].draw(canvas);
+			
+			if (arrowSequence[i].tweenAlpha < 1.0) {
+				arrowSequence[i].update(deltaTime);
+				break;
+			}
 		}
-		arrowSequence[arrowSequence.length - 1]?.update(deltaTime);
 	}
 
 	window.requestAnimationFrame(loop);
@@ -923,12 +978,16 @@ function doServerCommand(command, args) {
 		}
 	} else if (command == 'ROBOT_MOVE') {
 		processRobotMove(args);
+	} else if (command == 'ROBOT_SEQUENCE') {
+		processRobotSequence(args);
 	} else if (command == 'SET_STATE') {
 		processSetState(args);
 	} else if (command == 'TIME_SYNC') {
 		processTimeSync(args);
 	} else if (command == 'START_TIMER') {
 		processStartTimer(args);
+	} else if (command == 'CANCEL_TIMER') {
+		processCancelTimer(args);
 	} else if (command == 'START_SOLVE') {
 		processStartSolve(args);
 	} else if (command == 'PLAYER_VOTE') {
@@ -950,7 +1009,7 @@ function processPlayerVote(args) {
 
 function processStartSolve(args) {
 	currentSolvingPlayer = parseInt(args[0]);
-	serverBidStartTime = parseInt(args[1]);
+	serverStartTime = parseInt(args[1]);
 	moveCount = 0;
 	moveSequence = []
 	redoStack = []
@@ -959,7 +1018,11 @@ function processStartSolve(args) {
 }
 
 function processStartTimer(args) {
-	serverBidStartTime = parseInt(args[0]);
+	serverStartTime = parseInt(args[0]);
+}
+
+function processCancelTimer(args) {
+	serverStartTime = null;
 }
 
 function processTimeSync(args) {
@@ -988,11 +1051,8 @@ function processGiveTokens(args) {
 }
 
 function processFinalPosition(args) {
-	let tok = args.toString().split(",");
-	let numPositions = intdiv(tok.length, 3);
-
-	for(let i = 0; i < numPositions; i++) {
-		MoveArrow.setFinalPosition(tok[i * 3], tok[i * 3 + 1], tok[i * 3 + 2]);
+	for(let i = 0; i < args.length; i += 2) {
+		MoveArrow.setFinalPosition(i, args[i * 2], args[i * 2 + 1]);
 	}
 }
 
@@ -1068,8 +1128,9 @@ function processSetState(args) {
 		}
 	}
 
+	cancelDemo();
 	selection.clearSelection();
-	serverBidStartTime = null;
+	serverStartTime = null;
 	currentSolvingPlayer = null;
 	moveSequence = []
 	redoStack = []
@@ -1169,16 +1230,19 @@ function processRobotReset(args) {
 		moveCount = parseInt(args[args.length - 1]);
 	}
 
-	if(game.state == State.Demo) {
-		clearMoveArrows();
-	}
+	clearMoveArrows();
 }
 
 function processRobotMove(args) {
 	let robotId = parseInt(args[0]);
 
+	let isUndo = false;
+
 	if (game.state == State.Solve) {
+		let oldMoveCount = moveCount;
 		moveCount = parseInt(args[1]);
+		isUndo = oldMoveCount > moveCount;
+		filterArrowSequence(moveCount);
 	}
 	
 	let moveList = [];
@@ -1192,8 +1256,8 @@ function processRobotMove(args) {
 		let lastPos = robots[robotId].getCell();
 		for (let i = 0; i < moveList.length; ++i) {
 			robots[robotId].moveTo(moveList[i]);
-			if (game.state == State.Demo) {
-				arrowSequence.push(new MoveArrow(lastPos, moveList[i], robotId, game))
+			if (!isUndo && isAnyOf(game.state, State.Solve, State.Demo)) {
+				arrowSequence.push(new MoveArrow(lastPos, moveList[i], robotId, game, moveCount - 1));
 			}
 			lastPos = moveList[i];
 		}
@@ -1204,6 +1268,63 @@ function processRobotMove(args) {
 	}
 
 	updateUI();
+}
+
+function processRobotSequence(args) {
+	for (let i = 0; i < args.length; i += 2) {
+		let robotId = parseInt(args[i]);
+		let direction = parseInt(args[i + 1]);
+		let useArrows = isAnyOf(game.state, State.Solve, State.Demo);
+
+		if (useArrows) {
+			moveSequence.push(new RobotMove(game.robots[robotId], direction, null, robotId));
+			moveCount = moveSequence.length;
+		}
+
+		moveRobotInDirection(robotId, direction, useArrows, moveCount - 1);
+	}
+
+	if (game.state == State.Demo) {
+		advanceDemo();
+	} else {
+		for (let i = 0; i < robots.length; ++i) {
+			robots[i].cancelTween();
+		}
+		for (let i = 0; i < arrowSequence.length; ++i) {
+			arrowSequence[i].cancelTween();
+		}
+	}
+
+	updateUI();
+}
+
+let demoTimeoutId = null;
+
+function advanceDemo() {
+	cancelDemo();
+
+	if (demoCurrentMove == null || demoCurrentMove >= moveSequence.length) {
+		game.resetRobotPositions();
+		for (let i = 0; i < robots.length; ++i) {
+			robots[i].warpTo(game.robots[i]);
+		}
+		for (let i = 0; i < arrowSequence.length; ++i) {
+			arrowSequence[i].tweenAlpha = 0.0;
+		}
+		demoCurrentMove = 0;
+	} else if (demoCurrentMove != null && demoCurrentMove < moveSequence.length) {
+		let move = moveSequence[demoCurrentMove];
+		moveRobotInDirection(move.color, move.direction, false);
+		++demoCurrentMove;
+	}
+
+	demoTimeoutId = setTimeout(advanceDemo, 1000);
+}
+
+function cancelDemo() {
+	if (demoTimeoutId != null) {
+		clearTimeout(demoTimeoutId);
+	}
 }
 
 function doTimeSync() {

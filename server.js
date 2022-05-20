@@ -252,11 +252,6 @@ function syncGame(client) {
 	let commands = [];
 	commands.push(makeBoardCommand());
 	
-	if (game.originalRobotConfig != null) {
-		commands.push(makeRobotResetCommand());
-	}
-	commands.push(makeRobotMoveAllCommand());
-	
 	for (let playerId in game.players) {
 		let player = game.getPlayer(playerId);
 		commands.push(makePlayerJoinedCommand(player.id, player.name));
@@ -280,6 +275,8 @@ function syncGame(client) {
 		commands.push(makeDemoReadyCommand());
 	}
 
+	commands.push(makeGameStateCommand(game.state));
+
 	if (game.state == State.Bid) {
 		if (game.timerStartTime != null) {
 			commands.push(makeStartTimerCommand());
@@ -292,7 +289,15 @@ function syncGame(client) {
 		commands.push(makeRobotFinalPositionCommand());
 	}
 
-	commands.push(makeGameStateCommand(game.state));
+	if (game.originalRobotConfig != null) {
+		commands.push(makeRobotResetCommand());
+	}
+	
+	if (isAnyOf(game.state, State.Solve, State.Demo)) {
+		commands.push(makeRobotSequenceCommand(game.state == State.Solve ? moveSequence : demoSequence));
+	} else {
+		commands.push(makeRobotMoveAllCommand());
+	}
 
 	client.socket.send(commands.join('\n'));
 }
@@ -337,6 +342,16 @@ function makeRobotResetCommand() {
 
 function makeRobotMoveAllCommand() {
 	return makeRobotAllCommand('ROBOT_MOVEALL', game.getRobotPositions());
+}
+
+function makeRobotSequenceCommand(sequence) {
+	let command = 'ROBOT_SEQUENCE';
+
+	for (let i = 0; i < sequence.length; ++i) {
+		command += ` ${sequence[i].color} ${sequence[i].direction}`;
+	}
+
+	return command;
 }
 
 function makeRobotMoveCommand(robotId, moves = null) {
@@ -403,7 +418,7 @@ function makeRobotFinalPositionCommand() {
 	let str = 'FINAL_POSITION'
 
 	for(let i in game.robots) {
-		str += ` ${i} ${game.robots[i].x} ${game.robots[i].y}`;
+		str += ` ${game.robots[i].x} ${game.robots[i].y}`;
 	}
 
 	return str;
@@ -525,25 +540,6 @@ function nextRound() {
 	endDemo();
 }
 
-function demoNextStep() {
-	demoStep = (demoStep + 1 + DEMO_WARM_UP_TIME) % (demoSequence.length + DEMO_LINGER_TIME) - DEMO_WARM_UP_TIME;
-
-	if(demoStep >= 0 && demoStep < demoSequence.length) {
-		let robotID = demoSequence[demoStep].color;
-		let dir = demoSequence[demoStep].direction;
-
-		game.moveRobot(robotID, dir);
-		let command = [makeRobotMoveCommand(robotID)];
-		sendAll(command.join('\n'));
-	}
-
-	if(demoStep == -1 * DEMO_WARM_UP_TIME) {
-		game.resetRobotPositions();
-		let command = [makeRobotResetCommand()];
-		sendAll(command.join('\n'));
-	}
-}
-
 function startDemo() {
 	game.startDemoState();
 
@@ -556,17 +552,15 @@ function startDemo() {
 		game.moveRobot(robotID, dir);
 	}
 
-	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state), makeRobotFinalPositionCommand()];
+	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state), makeRobotFinalPositionCommand(), makeRobotSequenceCommand(demoSequence)];
 	sendAll(command.join('\n'));
-
-	game.resetRobotPositions();
-
-	demoStep = -1 * DEMO_WARM_UP_TIME;
-	demoInterval = setInterval(demoNextStep, DEMO_STEP_SPEED);
 }
 
 function endDemo() {
-	clearInterval(demoInterval);
+	if (demoInterval != null) {
+		clearInterval(demoInterval);
+		demoInterval = null;
+	}
 }
 
 function executeVote(vote) {
@@ -694,9 +688,10 @@ function doCommand(client, command, args) {
 	} else if (command == 'REDO_ROBOT') {
 		if (client.playerId != null && game.getState() == State.Solve && game.playerAllowedMove(client.playerId) && redoStack.length > 0) {
 			let addMove = redoStack.pop();
-			game.moveRobot(addMove.color, addMove.direction);
+			let outMoves = [];
+			game.moveRobot(addMove.color, addMove.direction, outMoves);
 			moveSequence.push(addMove);
-			sendAll(makeRobotMoveCommand(addMove.color));
+			sendAll(makeRobotMoveCommand(addMove.color, outMoves.slice(1)));
 		}
 	} else if (command == 'UNDO_ROBOT') {
 		if (client.playerId != null && game.getState() == State.Solve && game.playerAllowedMove(client.playerId) && moveSequence.length > 0) {
