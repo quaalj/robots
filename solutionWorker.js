@@ -20,10 +20,20 @@ parentPort.on("message", function(e) {
         robots[i] = new Point(robots[i].x, robots[i].y);
     }
 
-    let stateSequence = solveBoard(board, goal, robots, null);
-    let msg = {'solution' : compactSolution(stateSequence), 'goalColor' : goal.color, 'goalSymbol' : goal.symbol, 'robots':robots, 'seed' : seed};
-    console.log("Worker found solution");
-    parentPort.postMessage(msg);
-    parentPort.close();
+    setTimeout(() => runSolver(board, goal, robots, seed), 1);
 });
+
+function runSolver(board, goal, robots, seed) {
+    console.log("Starting solver");
+
+    try {
+        let stateSequence = solveBoard(board, goal, robots, null);
+        let msg = {'solution' : compactSolution(stateSequence), 'goalColor' : goal.color, 'goalSymbol' : goal.symbol, 'robots':robots, 'seed' : seed};
+        console.log("Worker found solution");
+        parentPort.postMessage(msg);
+        parentPort.close();
+    } catch (err) {
+        console.log("Solver error: " + err.toString());
+    }
+}
 

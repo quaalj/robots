@@ -776,7 +776,7 @@ function doDirectionMove(direction) {
 		let target = selection.getMoveEndpoint(direction);
 		if (!target.equals(robots[selection.selectedRobot].getCell())) {
 			if (game.state == State.Solve) {
-				moveSequence.push(new RobotMove(robots[selection.selectedRobot].getCell(), direction, null, robots[selection.selectedRobot].color));
+				moveSequence.push(new RobotMove(robots[selection.selectedRobot].getCell(), direction, robots[selection.selectedRobot].color));
 				redoStack = [];
 				moveCount = moveSequence.length;
 				updateUI();
@@ -1277,7 +1277,7 @@ function processRobotSequence(args) {
 		let useArrows = isAnyOf(game.state, State.Solve, State.Demo);
 
 		if (useArrows) {
-			moveSequence.push(new RobotMove(game.robots[robotId], direction, null, robotId));
+			moveSequence.push(new RobotMove(game.robots[robotId], direction, robotId));
 			moveCount = moveSequence.length;
 		}
 
@@ -1285,6 +1285,7 @@ function processRobotSequence(args) {
 	}
 
 	if (game.state == State.Demo) {
+		demoCurrentMove = null;
 		advanceDemo();
 	} else {
 		for (let i = 0; i < robots.length; ++i) {
@@ -1436,8 +1437,10 @@ showDemoButton.onclick = voteViewOptimal;
 window.requestAnimationFrame(loop);
 
 // TODO:
+// - Add a timer to round end (start counting when first player votes, auto-start when all players vote, maybe add a 'wait' vote for players to explicitly hold)
 // - Add a proper random-board generation system
 // - Clean up the UI, make it clearer when the state and round transition changes
+// - Tag game
 
 </script>
 

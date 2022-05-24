@@ -1,4 +1,4 @@
-import { isupper, intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf, isHexDigit } from './util.js';
+import { isupper, intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf, isHexDigit, BucketPriQueue } from './util.js';
 
 /// Global Contants
 
@@ -160,17 +160,33 @@ export class Bumper {
 
 export class RobotState {
 	constructor(robots, warp = false, depth = 0) {
+		warp = true;
 		if (warp) {
 			let sorted = [...robots];
-			sorted.sort(intcmp);
+			//sorted.sort(Point.compare);
 			Object.defineProperty(this, 'robots', { 'value': sorted });
 		} else {
 			let sorted = robots.slice(1);
-			sorted.sort(intcmp);
+			sorted.sort(Point.compare);
 			Object.defineProperty(this, 'robots', { 'value': sorted });
 			this.robots.unshift(robots[0]);
 		}
 		this.depth = depth;
+	}
+
+	checkGoal(cell, goal) {
+		if (goal.symbol == Symbol.Warp) {
+			for (let i = 0; i < this.robots.length; ++i) {
+				if (cell.equals(this.robots[i])) {
+					return true;
+				}
+			}
+		} else {
+			if (cell.equals(this.robots[goal.color])) {
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	activeRobot() {
@@ -180,17 +196,48 @@ export class RobotState {
 	inactiveRobots() {
 		return this.robots.slice(1);
 	}
+
+	static uncompressIntState(state, numRobots) {
+		console.assert(numRobots > 0);
+		console.assert(numRobots <= 4);
+		let robots = [];
+		for (let i = 0; i < numRobots; ++i) {
+			let x = (state >> (i * 8)) & 0x0F;
+			let y = (state >> (i * 8 + 4)) & 0x0F;
+			robots.push(new Point(x, y));
+		}
+		return robots;
+	}
+
+	static uncompressStringState(state) {
+		let toks = state.split(':');
+		let robots = [];
+		for (let i = 0; i < toks.length; ++i) {
+			let nums = toks[i].split(',');
+			robots.push(new Point(parseInt(nums[0]), parseInt(nums[1])));
+		}
+		return robots;
+	}
+
+	toInt() {
+		// Note: only works for boards of size <= 8x8 and <= 4 robots
+		let result = 0;
+		for (let i = 0; i < this.robots.length; ++i) {
+			result |= (this.robots[i].x & 0x0F) << (i * 8);
+			result |= (this.robots[i].y & 0x0F) << (i * 8 + 4);
+		}
+		return result;
+	}
 	
 	toString() {
-		return this.robots.join(':');
+		return this.robots.map(p => `${p.x},${p.y}`).join(':');
 	}
 }
 
 export class RobotMove {
-	constructor(position, direction, previous = null, color = null) {
+	constructor(position, direction, color = null) {
 		Object.defineProperty(this, 'position', { 'value': position });
 		Object.defineProperty(this, 'direction', { 'value': direction });
-		Object.defineProperty(this, 'previous', { 'value': previous });
 		this.color = color;
 	}
 	
@@ -362,6 +409,44 @@ export class Board {
 	deindexify(idx) {
 		return new point(idx % this.size.x, intdiv(idx, this.size.x));
 	}
+
+	createRookBoard(targetCell, color) {
+		let queue = [];
+		queue.push([1, targetCell]);
+		let cells = new Array(this.size.x * this.size.y);
+		let robots = new Array(color + 1);
+		while (queue.length > 0) {
+			let current = queue.shift();
+			let currentCell = current[1];
+			let currentDepth = current[0];
+			let index = this.indexify(currentCell.x, currentCell.y);
+			if (cells[index] === undefined) {
+				cells[index] = currentDepth;
+			}
+
+			for (let direction = 0; direction < 4; ++direction) {
+				let outMoves = []
+				robots[color] = currentCell;
+				this.doMove(robots, color, direction, outMoves, true);
+				for (let i = 1; i < outMoves.length; ++i) {
+					let delta = outMoves[i].sub(outMoves[i-1]);
+					let dist = delta.l1Norm();
+					let subDir = delta.getDirection();
+					delta = Point.fromDirection(subDir);
+					for (let j = 1; j <= dist; ++j) {
+						let subCell = outMoves[i-1].add(delta.mul(j));
+						let subIndex = this.indexify(subCell.x, subCell.y);
+						let cell = this.getCell(subCell);
+						if (cell.bumper == null && cells[subIndex] === undefined) {
+							cells[subIndex] = currentDepth;
+							queue.push([currentDepth + 1, subCell]);
+						}
+					}
+				}
+			}
+		}
+		return cells;
+	}
 	
 	setCell(...args) {
 		if (args.length == 3) {
@@ -485,6 +570,10 @@ export class Board {
 		
 		return result;
 	}
+
+	canUseIntState(numRobots) {
+		return numRobots <= 4 && this.size.x <= 16 && this.size.y <= 16;
+	}
 	
 	static pasteBoards(boards) {
 		let fullHeight = 0;
@@ -521,14 +610,14 @@ export class Board {
 		return result;
 	}
 	
-	doMove(robots, robotIdx, moveDir, outList = null) {
+	doMove(robots, robotIdx, moveDir, outList = null, allowInvalidEndpoint = false) {
 		let blocked = false;
 		let robotPos = robots[robotIdx];
 
 		console.assert(!isNaN(robotPos.x));
 		console.assert(!isNaN(robotPos.y));
-
-		let delta = Point.fromDirection(moveDir);
+		
+		let delta =  Point.fromDirection(moveDir);
 		
 		console.assert(!isNaN(delta.x));
 		console.assert(!isNaN(delta.y));
@@ -548,7 +637,7 @@ export class Board {
 			blocked = this.isMoveBlocked(robotPos, nextPos);
 			if (!blocked) {
 				for (let i = 0; i < robots.length; ++i) {
-					if (robots[i].equals(nextPos)) {
+					if (nextPos.equals(robots[i])) {
 						// TODO: maybe implement motion-transfer robots as an optional thing?
 						blocked = true;
 						break;
@@ -558,7 +647,7 @@ export class Board {
 			
 			if (blocked) {
 				let cell = this.getCell(robotPos);
-				if (cell.bumper != null) {
+				if (cell.bumper != null && !allowInvalidEndpoint) {
 					if (outList != null) {
 						outList.length = 0;
 					}
@@ -595,9 +684,9 @@ export function dumpSolution(board, originalRobots, finalState, stateTree) {
 	let moves = [];
 	
 	while (currentState != null) {
-		console.assert(currentState in stateTree);
+		console.assert(stateTree.has(currentState.toInt()));
 		
-		let prevMove = stateTree[currentState];
+		let prevMove = stateTree.get(currentState.toInt());
 		if (prevMove == null) {
 			break;
 		}
@@ -622,31 +711,55 @@ export function dumpSolution(board, originalRobots, finalState, stateTree) {
 export function solveBoard(board, goal, robots, earlyOut = null) {
 	let botCopy = [...robots]
 	let isWarp = goal.symbol == Symbol.Warp;
-	if (!isWarp) {
-		// Move the active robot to the front of the list
-		[botCopy[0], botCopy[goal.color]] = [botCopy[goal.color], botCopy[0]]
-	}
-	
+	const MAX_MOVE = 22;
+	// if (!isWarp) {
+	// 	// Move the active robot to the front of the list
+	// 	[botCopy[0], botCopy[goal.color]] = [botCopy[goal.color], botCopy[0]]
+	// }
+
 	let startingState = new RobotState(botCopy, isWarp);
-	let visitedStates = {};
-	visitedStates[startingState] = null;
+	let visitedStates = new Map();
+	visitedStates.set(startingState.toInt(), null);
 	
-	let queue = [startingState];
+	let queue = new BucketPriQueue(MAX_MOVE);
+	queue.insert(0, startingState);
 	let goalPos = board.findGoal(goal);
 	
 	// TODO: need to check for _all_ robots for the warp tile
-	if (startingState.activeRobot().equals(goalPos)) {
+	if (startingState.checkGoal(goalPos, goal)) {
 		if (earlyOut != null) {
 			return null;
 		}
 		return dumpSolution(startingState, visitedStates);
 	}
+
+	let priorityRookBoards = new Array(robots.length);
+	for (let i = 0; i < robots.length; ++i) {
+		if (isWarp || goal.color == i) {
+			priorityRookBoards[i] = board.createRookBoard(goalPos, i);
+		}
+	}
+
+	function getHeuristic(positions) {
+		let result = undefined;
+		for (let i = 0; i < robots.length; ++i) {
+			if (priorityRookBoards[i] === undefined) {
+				continue;
+			}
+			let currentVal = priorityRookBoards[i][board.indexify(positions[i].x, positions[i].y)];
+			if (result === undefined || currentVal < result) {
+				result = currentVal;
+			}
+		}
+		return result;
+	}
 	
 	while (queue.length > 0) {
-		let state = queue.shift();
+		let current = queue.remove();
+		let state = current[1];
 		console.assert(state.robots.length >= 1);
-		console.assert(state in visitedStates);
-		console.assert(!state.activeRobot().equals(goalPos));
+		console.assert(visitedStates.has(state.toInt()));
+		console.assert(!state.checkGoal(goalPos, goal));
 
 		for (let robot = 0; robot < state.robots.length; ++robot) {
 			for (let dir = 0; dir < 4; ++dir) {
@@ -660,15 +773,17 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 				robotPositions[robot] = result;
 				let nextState = new RobotState(robotPositions, isWarp, state.depth + 1);
 				// Already processed this state, skipping
-				if (nextState in visitedStates) {
+				if (visitedStates.has(nextState.toInt())) {
 					continue;
 				}
 				
-				visitedStates[nextState] = new RobotMove(state.robots[robot], dir, state);
+				let thisMove = new RobotMove(state.robots[robot], dir, robot);
+				thisMove.previous = state;
+				visitedStates.set(nextState.toInt(), thisMove);
 				
 				// TODO: disallow solutions of 1 move, and require the horizontal+vertical rule
 				
-				if ((robot == 0 || isWarp) && result.equals(goalPos)) {
+				if ((isWarp || robot == goal.color) && result.equals(goalPos)) {
 					// Found solution (if we ever do the motion-transfer version, will need to always the new position for the active robot)
 					return dumpSolution(board, robots, nextState, visitedStates);
 				}
@@ -678,7 +793,13 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 					continue;
 				}
 
-				queue.push(nextState);
+				let lowerBoundCost = nextState.depth + getHeuristic(robotPositions);
+
+				if (lowerBoundCost > MAX_MOVE) {
+					continue;
+				}
+
+				queue.insert(lowerBoundCost, nextState);
 			}
 		}
 	}

@@ -271,11 +271,11 @@ function syncGame(client) {
 		commands.push(makePlayerBidCommand(game.playerBids[i].playerId));
 	}
 
-	if(demoSequence) {
+	commands.push(makeGameStateCommand(game.state));
+
+	if(demoSequence && isAnyOf(game.state, State.Solve, State.Free, State.Demo, State.End)) {
 		commands.push(makeDemoReadyCommand());
 	}
-
-	commands.push(makeGameStateCommand(game.state));
 
 	if (game.state == State.Bid) {
 		if (game.timerStartTime != null) {
@@ -396,6 +396,11 @@ function endBidState() {
 	console.log('Ending bidding state');
 	clearTimer();
 	game.startSolveState();
+
+	if (demoSequence != null) {
+		sendAll(makeDemoReadyCommand());
+	}
+
 	updateSolveState();
 }
 
@@ -663,7 +668,7 @@ function doCommand(client, command, args) {
 			let isFree = isAnyOf(game.state, State.Free, State.End);
 			
 			if (!isFree) {
-				moveSequence.push(new RobotMove(game.robots[robotId], direction, null, robotId));
+				moveSequence.push(new RobotMove(game.robots[robotId], direction, robotId));
 			}
 			let outMoves = []
 			let originalRobotPosition = game.robots[robotId];
@@ -745,7 +750,9 @@ let workerMessageListener = function(msg) {
 
 	if(!isSolutionStale(msg.seed, solutionGoal, solutionRobots)) {
 		demoSequence = msg.solution;
-		sendAll(makeDemoReadyCommand());
+		if (isAnyOf(game.state, State.Solve, State.Free, State.End)) {
+			sendAll(makeDemoReadyCommand());
+		}
 	}
 }
 

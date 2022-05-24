@@ -1,4 +1,4 @@
-import { Board, Bumper } from "../robots.js";
+import { Board, Bumper, RobotState, Color, solveBoard, Goal } from "../robots.js";
 import { Point, Direction } from "../util.js";
 import assert from 'assert';
 
@@ -187,5 +187,140 @@ describe("Board", function() {
         let result = board.doMove(robots, 0, Direction.Right);
         expect(result.x).toBe(3);
         expect(result.y).toBe(3);
+    });
+
+    it("can create a rook-board", function() {
+        let board = new Board(4, 4);
+        let rookBoard = board.createRookBoard(new Point(2, 2), 3);
+
+        for (let i = 0; i < 4; ++i) {
+            for (let j = 0; j < 4; ++j) {
+                let indexC = board.indexify(i, j);
+                if (i == 2 || j == 2) {
+                    expect(rookBoard[indexC]).toBe(1);
+                } else {
+                    expect(rookBoard[indexC]).toBe(2);
+                }
+            }
+        }
+    });
+
+    it("can create a rook-board with bumpers", function() {
+        let board = new Board(4, 4);
+        let c1 = board.getCell(new Point(2, 0));
+        c1.bumper = new Bumper(Color.Yellow, false);
+        let c2 = board.getCell(new Point(0, 0));
+        c2.bumper = new Bumper(Color.Blue, true);
+        let rookBoard = board.createRookBoard(new Point(2, 2), Color.Green);
+
+        for (let i = 0; i < 4; ++i) {
+            for (let j = 0; j < 4; ++j) {
+                let indexC = board.indexify(i, j);
+                if ((i == 0 && j == 0) || (i == 2 && j == 0)) {
+                    expect(rookBoard[indexC]).toBe(undefined);
+                } else if (i == 2 || j == 2) {
+                    expect(rookBoard[indexC]).toBe(1);
+                } else if ((i == 1 && j == 0) || (i == 0 && j > 0)) {
+                    expect(rookBoard[indexC]).toBe(1);
+                } else {
+                    expect(rookBoard[indexC]).toBe(2);
+                }
+            }
+        }
+    });
+
+    it("can create handle invalid moves with bumpers", function() {
+        let board = new Board(4, 4);
+        let c1 = board.getCell(new Point(2, 0));
+        c1.bumper = new Bumper(Color.Blue, false);
+        let c2 = board.getCell(new Point(0, 0));
+        c2.bumper = new Bumper(Color.Yellow, true);
+        let rookBoard = board.createRookBoard(new Point(2, 2), Color.Yellow);
+
+        for (let i = 0; i < 4; ++i) {
+            for (let j = 0; j < 4; ++j) {
+                let indexC = board.indexify(i, j);
+                if ((i == 0 && j == 0) || (i == 2 && j == 0)) {
+                    expect(rookBoard[indexC]).toBe(undefined);
+                } else if (i == 2 || j == 2 || (i == 1 && j == 0)) {
+                    expect(rookBoard[indexC]).toBe(1);
+                } else {
+                    expect(rookBoard[indexC]).toBe(2);
+                }
+            }
+        }
+    });
+});
+
+describe("RobotState", function() {
+    it("Can compress to int state", function() {
+        let robots = [new Point(0, 0), new Point(1, 1), new Point(2, 2), new Point(3, 3)];
+        let state = new RobotState(robots, true, 0);
+        let intState = state.toInt();
+
+        expect(intState).toBe(0x33221100);
+
+        let outRobots = RobotState.uncompressIntState(intState, robots.length);
+
+        expect(outRobots.length).toBe(robots.length);
+        for (let i = 0; i < robots.length; ++i) {
+            expect(outRobots[i].x).toBe(robots[i].x);
+            expect(outRobots[i].y).toBe(robots[i].y);
+        }
+    });
+
+    // it("normalizes robot state for warp", function() {
+    //     let robots = [new Point(0, 0), new Point(1, 1), new Point(2, 2), new Point(3, 3)];
+    //     let robotsCopy = [robots[1].clone(), robots[2].clone(), robots[0].clone(), robots[3].clone()];
+    //     let state = new RobotState(robots, true, 0);
+    //     let stateCopy = new RobotState(robotsCopy, true, 0);
+
+    //     for (let i = 0; i < robots.length; ++i) {
+    //         expect(state.robots[i].x).toBe(stateCopy.robots[i].x);
+    //         expect(state.robots[i].y).toBe(stateCopy.robots[i].y);
+    //     }
+    // });
+
+    // it("normalizes robot state except for lead for non-warp", function() {
+    //     let robots = [new Point(1, 1), new Point(0, 0), new Point(2, 2), new Point(3, 3)];
+    //     let robotsCopy = [robots[0].clone(), robots[2].clone(), robots[1].clone(), robots[3].clone()];
+    //     let state = new RobotState(robots, false, 0);
+    //     let stateCopy = new RobotState(robotsCopy, false, 0);
+
+    //     for (let i = 0; i < robots.length; ++i) {
+    //         expect(state.robots[i].x).toBe(stateCopy.robots[i].x);
+    //         expect(state.robots[i].y).toBe(stateCopy.robots[i].y);
+    //     }
+    // });
+
+    // it("has the same key for warp", function() {
+    //     let robots = [new Point(0, 0), new Point(1, 1), new Point(2, 2), new Point(3, 3)];
+    //     let robotsCopy = [robots[1].clone(), robots[2].clone(), robots[0].clone(), robots[3].clone()];
+    //     let state = new RobotState(robots, true, 0);
+    //     let stateCopy = new RobotState(robotsCopy, true, 0);
+
+    //     expect(state.toString()).toBe(stateCopy.toString());
+    //     expect(state.toInt()).toBe(stateCopy.toInt());
+    // });
+
+    // it("has the same key for non-warp", function() {
+    //     let robots = [new Point(1, 1), new Point(0, 0), new Point(2, 2), new Point(3, 3)];
+    //     let robotsCopy = [robots[0].clone(), robots[2].clone(), robots[1].clone(), robots[3].clone()];
+    //     let state = new RobotState(robots, false, 0);
+    //     let stateCopy = new RobotState(robotsCopy, false, 0);
+
+    //     expect(state.toString()).toBe(stateCopy.toString());
+    //     expect(state.toInt()).toBe(stateCopy.toInt());
+    // });
+});
+
+describe("solveBoard", function() {
+    it("Works", function() {
+        let board = new Board(4, 4);
+        let goalCell = board.getCell(new Point(1, 1));
+        goalCell.goal = new Goal(2, Symbol.Star);
+        let robots = [new Point(0, 0), new Point(0, 3), new Point(3, 3)];
+        let solution = solveBoard(board, goalCell.goal, robots);
+        expect(solution.length).toBe(4);
     });
 });

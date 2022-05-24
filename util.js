@@ -200,6 +200,14 @@ export class Point {
 			return new Point(0, 0);
 		}
 	}
+
+	static compare(lhs, rhs) {
+		if (lhs.y == rhs.y) {
+			return lhs.x - rhs.x;
+		} else {
+			return lhs.y - rhs.y;
+		}
+	}
 	
 	sub(...args) {
 		if (args.length == 2) {
@@ -275,7 +283,7 @@ export class Point {
 	}
 	
 	equals(other) {
-		if (other == null) {
+		if (other === null || other === undefined) {
 			return false;
 		}
 		return this.x == other.x && this.y == other.y;
@@ -284,6 +292,53 @@ export class Point {
 	toString() {
 		return `(${this.x},${this.y})`;
 	}
+
+	clone() {
+		return new Point(this.x, this.y);
+	}
 }
 
 Point.CardinalPoints = [new Point(-1, 0), new Point(0, -1), new Point(1, 0), new Point(0, 1)];
+
+export class BucketPriQueue {
+	constructor(startSize = 0) {
+		Object.defineProperty(this, 'buckets', { 'value': new Array(startSize) });
+		Object.defineProperty(this, 'length', {
+			get() {
+				return this.numEntries;
+			}
+		});
+		for (let i = 0; i < startSize; ++i) {
+			this.buckets[i] = [];
+		}
+		this.numEntries = 0;
+	}
+
+	insert(priority, value) {
+		if (priority >= this.buckets.length) {
+			let oldSize = this.buckets.length;
+			this.buckets.length = priority + 1;
+			for (let i = oldSize; i < this.buckets.length; ++i) {
+				this.buckets[i] = [];
+			}
+		}
+		this.buckets[priority].push(value);
+		++this.numEntries;
+	}
+
+	remove() {
+		if (this.numEntries > 0) {
+			for (let i = 0; i < this.buckets.length; ++i) {
+				if (this.buckets[i].length > 0) {
+					--this.numEntries;
+					return [i, this.buckets[i].pop()];
+				}
+			}
+		}
+		return null;
+	}
+
+	isEmpty() {
+		return this.numEntries == 0;
+	}
+}
