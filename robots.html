@@ -65,14 +65,9 @@ div.player_div {
 	<button id="next" class="playing free">Next Round</button>
 	<button id="wait" class="playing free">Wait Please</button>
 	<br>
-</span>
-
-<span class="playing demo">
-	<button id="skip_demo" class="player demo">Skip Demo</button>
-	<span id="solution_indicator" class="playing demo"></span>
+	<span id="solution_indicator" class="playing free"></span>
 	<br>
 </span>
-
 
 <span class="playing">
 	Name: <span id="name"></span>
@@ -119,7 +114,6 @@ let nextRoundButton = document.getElementById('next');
 let waitRoundButton = document.getElementById('wait');
 let gentlemanButton = document.getElementById('gentleman');
 let resetRobotsButton = document.getElementById('reset_robots');
-let skipDemoButton = document.getElementById('skip_demo');
 let showDemoButton = document.getElementById('demo');
 let pendingFocusElement = nameInput;
 
@@ -245,8 +239,10 @@ let redoStack = [];
 let moveCount = null;
 
 let demoAvailable = false;
-let demoLength = -1;
 let demoCurrentMove = null;
+let demoSequence = null;
+let cachedRobotPositions = [];
+
 let arrowSequence = [];
 
 let playerId = null;
@@ -258,6 +254,10 @@ let serverStartTime = null;
 let socket = null;
 
 let timeSyncTimeoutId = null;
+
+function isViewingDemo() {
+	return demoCurrentMove != null;
+}
 
 class MoveArrow {
 	static cellHCount = Array(game.board.width * game.board.height).fill(0);
@@ -561,8 +561,15 @@ function updateUI() {
 		gentlemanButton.disabled = player.vote == 'SKIPBID';
 		nextRoundButton.disabled = player.vote == 'NEXT';
 		waitRoundButton.disabled = player.vote == 'WAIT';
-		skipDemoButton.disabled = player.vote == 'SKIPDEMO';
-		showDemoButton.disabled = (player.vote == 'DEMO' || !demoAvailable);
+		showDemoButton.disabled = !demoAvailable;
+
+		if (isViewingDemo()) {
+			resetRobotsButton.disabled = true;
+			showDemoButton.innerText = 'Cancel Demo';
+		} else {
+			resetRobotsButton.disabled = false;
+			showDemoButton.innerText = 'Show Demo';
+		}
 		
 		document.getElementById('name').textContent = "" + player.name;
 		document.getElementById('score').textContent = "" + player.getScore();
@@ -594,12 +601,6 @@ function voteGentleman() {
 	}
 }
 
-function voteSkipDemo() {
-	if (socket != null) {
-		socket.send(`VOTE SKIPDEMO`);
-	}
-}
-
 function voteNextRound() {
 	if (socket != null) {
 		socket.send(`VOTE NEXT`);
@@ -612,9 +613,15 @@ function voteWaitNextRound() {
 	}
 }
 
-function voteViewOptimal() {
-	if (socket != null) {
-		socket.send(`VOTE DEMO`);
+function viewOptimal() {
+	if (isViewingDemo()) {
+		cancelDemo()
+	} else {
+		if (demoSequence == null && socket != null) {
+			socket.send(`VIEW_DEMO`);
+		} else {
+			startDemo();
+		}
 	}
 }
 
@@ -776,7 +783,7 @@ function epochDeltaToTime(deltaTime) {
 }
 
 function canDoMoves() {
-	return playerId != null && (isClientSolving() || isAnyOf(game.state, State.Free, State.End));
+	return playerId != null && (isClientSolving() || isAnyOf(game.state, State.Free, State.End)) && !isViewingDemo();
 }
 
 function isClientSolving() {
@@ -794,7 +801,7 @@ function doDirectionMove(direction) {
 				updateUI();
 			}
 			socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
-			moveRobotInDirection(selection.selectedRobot, direction, isAnyOf(game.state, State.Solve, State.Demo), moveCount - 1);
+			moveRobotInDirection(selection.selectedRobot, direction, isAnyOf(game.state, State.Solve) || isViewingDemo(), moveCount - 1);
 			return true;
 		}
 	}
@@ -928,13 +935,9 @@ function loop(timestamp) {
 	
 	drawGame(game, canvas);
 
-	if(isAnyOf(game.state, State.Solve, State.Demo)) {
+	if(isAnyOf(game.state, State.Solve) || isViewingDemo()) {
 		let didTween = false;
 		for(let i in arrowSequence) {
-			if (game.state == State.Demo && demoCurrentMove <= arrowSequence[i].moveId) {
-				break;
-			}
-
 			arrowSequence[i].draw(canvas);
 			
 			if (arrowSequence[i].tweenAlpha < 1.0) {
@@ -985,13 +988,15 @@ function doServerCommand(command, args) {
 		processSetBid(args);
 	} else if (command == 'ROBOT_MOVEALL' || command == 'ROBOT_RESET') {
 		processRobotReset(args);
-		if (command == 'ROBOT_RESET') {
+		if (command == 'ROBOT_RESET' && !isViewingDemo()) {
 			game.originalRobotConfig = [...game.robots];
 		}
 	} else if (command == 'ROBOT_MOVE') {
 		processRobotMove(args);
 	} else if (command == 'ROBOT_SEQUENCE') {
 		processRobotSequence(args);
+	} else if (command == 'DEMO_SEQUENCE') {
+		processDemoSequence(args);
 	} else if (command == 'SET_STATE') {
 		processSetState(args);
 	} else if (command == 'TIME_SYNC') {
@@ -1097,6 +1102,7 @@ function processNewBoard(args) {
 	robots = [];
 	for (let i = 0; i < game.robots.length; ++i) {
 		robots.push(new Robot(game, game.robots[i], i));
+		cachedRobotPositions.push(game.robots[i]);
 	}
 
 	updateTokenCount();
@@ -1109,23 +1115,17 @@ function processSetState(args) {
 	$(`.player_vote`).text('');
 
 	if (args.length > 1) {
-		if (isAnyOf(game.state, State.Bid, State.Solve, State.Demo, State.Free)) {
+		if (isAnyOf(game.state, State.Bid, State.Solve, State.Free)) {
 			game.currentGoal = Goal.fromInt(parseInt(args[1]));
 			moveCount = 0;
-			demoLength = -1;
 		}
 	}
 	if (game.state == State.Bid) {
 		game.resetBids();
 		$('.player_bid').text('');
 		demoAvailable = false;
+		demoSequence = null;
 		pendingFocusElement = bidInput;
-	}
-
-	if (game.state == State.Demo) {
-		demoLength = parseInt(args[2]);
-		clearMoveArrows();
-		document.getElementById('solution_indicator').textContent = `The computer found: ${demoLength}`;
 	}
 
 	if (game.state == State.End) {
@@ -1235,6 +1235,7 @@ function processRobotReset(args) {
 	for (let i = 0; i < Math.min(robots.length * 2, args.length); i += 2) {
 		let robotId = intdiv(i, 2);
 		let dest = new Point(parseInt(args[i]), parseInt(args[i+1]));
+		cachedRobotPositions[robotId] = dest;
 		robots[robotId].warpTo(dest);
 	}
 	selection.clearSelection();
@@ -1264,11 +1265,15 @@ function processRobotMove(args) {
 		moveList.push(dest);
 	}
 
-	if (moveList.length > 0 && !moveList[moveList.length - 1].equals(robots[robotId].getCell())) {
+	if (moveList.length > 0) {
+		cachedRobotPositions[robotId] = moveList[moveList.length - 1];
+	}	
+
+	if (!isViewingDemo() && moveList.length > 0 && !moveList[moveList.length - 1].equals(robots[robotId].getCell())) {
 		let lastPos = robots[robotId].getCell();
 		for (let i = 0; i < moveList.length; ++i) {
 			robots[robotId].moveTo(moveList[i]);
-			if (!isUndo && isAnyOf(game.state, State.Solve, State.Demo)) {
+			if (!isUndo && isAnyOf(game.state, State.Solve)) {
 				arrowSequence.push(new MoveArrow(lastPos, moveList[i], robotId, game, moveCount - 1));
 			}
 			lastPos = moveList[i];
@@ -1282,30 +1287,35 @@ function processRobotMove(args) {
 	updateUI();
 }
 
+function processDemoSequence(args) {
+	if (demoSequence == null) {
+		demoSequence = [];
+		for (let i = 0; i < args.length; i += 2) {
+			let robotId = parseInt(args[i]);
+			let direction = parseInt(args[i + 1]);
+			demoSequence.push(new RobotMove(game.robots[robotId], direction, robotId));
+		}
+
+		startDemo();
+	}
+}
+
 function processRobotSequence(args) {
 	for (let i = 0; i < args.length; i += 2) {
 		let robotId = parseInt(args[i]);
 		let direction = parseInt(args[i + 1]);
-		let useArrows = isAnyOf(game.state, State.Solve, State.Demo);
-
-		if (useArrows) {
-			moveSequence.push(new RobotMove(game.robots[robotId], direction, robotId));
-			moveCount = moveSequence.length;
-		}
-
+		let useArrows = isAnyOf(game.state, State.Solve);
+		moveSequence.push(new RobotMove(game.robots[robotId], direction, robotId));
+		moveCount = moveSequence.length;
 		moveRobotInDirection(robotId, direction, useArrows, moveCount - 1);
 	}
 
-	if (game.state == State.Demo) {
-		demoCurrentMove = null;
-		advanceDemo();
-	} else {
-		for (let i = 0; i < robots.length; ++i) {
-			robots[i].cancelTween();
-		}
-		for (let i = 0; i < arrowSequence.length; ++i) {
-			arrowSequence[i].cancelTween();
-		}
+	for (let i = 0; i < robots.length; ++i) {
+		robots[i].cancelTween();
+		cachedRobotPositions[i] = robots[i].getCell();
+	}
+	for (let i = 0; i < arrowSequence.length; ++i) {
+		arrowSequence[i].cancelTween();
 	}
 
 	updateUI();
@@ -1313,31 +1323,52 @@ function processRobotSequence(args) {
 
 let demoTimeoutId = null;
 
-function advanceDemo() {
-	cancelDemo();
+function startDemo() {
+	document.getElementById('solution_indicator').textContent = `The computer found: ${demoSequence.length}`;
+	demoCurrentMove = null;
+	selection.clearSelection();
+	advanceDemo();
+	updateUI();
+	console.assert(isViewingDemo());
+}
 
-	if (demoCurrentMove == null || demoCurrentMove >= moveSequence.length) {
+function advanceDemo() {
+	clearDemoTimer();
+
+	if (demoCurrentMove == null || demoCurrentMove >= demoSequence.length) {
 		game.resetRobotPositions();
+		clearMoveArrows();
 		for (let i = 0; i < robots.length; ++i) {
 			robots[i].warpTo(game.robots[i]);
 		}
-		for (let i = 0; i < arrowSequence.length; ++i) {
-			arrowSequence[i].tweenAlpha = 0.0;
-		}
 		demoCurrentMove = 0;
-	} else if (demoCurrentMove != null && demoCurrentMove < moveSequence.length) {
-		let move = moveSequence[demoCurrentMove];
-		moveRobotInDirection(move.color, move.direction, false);
+	} else if (demoCurrentMove != null && demoCurrentMove < demoSequence.length) {
+		let move = demoSequence[demoCurrentMove];
+		moveRobotInDirection(move.color, move.direction, true, demoCurrentMove);
 		++demoCurrentMove;
 	}
 
 	demoTimeoutId = setTimeout(advanceDemo, 1000);
+	console.assert(isViewingDemo());
 }
 
-function cancelDemo() {
+function clearDemoTimer() {
 	if (demoTimeoutId != null) {
 		clearTimeout(demoTimeoutId);
 	}
+}
+
+function cancelDemo() {
+	clearDemoTimer();
+	if (isViewingDemo()) {
+		clearMoveArrows();
+		document.getElementById('solution_indicator').textContent = '';
+		demoCurrentMove = null;
+		for (let i = 0; i < robots.length; ++i) {
+			robots[i].warpTo(cachedRobotPositions[i]);
+		}
+	}
+	console.assert(!isViewingDemo());
 }
 
 function doTimeSync() {
@@ -1346,7 +1377,6 @@ function doTimeSync() {
 	}
 
 	socket.send(`SYNC_TIME ${Date.now()}`);
-
 	timeSyncTimeoutId = setTimeout(doTimeSync, TIME_SYNC_INTERVAL);
 }
 
@@ -1444,19 +1474,19 @@ nextRoundButton.onclick = voteNextRound;
 waitRoundButton.onclick = voteWaitNextRound;
 gentlemanButton.onclick = voteGentleman;
 resetRobotsButton.onclick = revertMoves;
-skipDemoButton.onclick = voteSkipDemo;
-showDemoButton.onclick = voteViewOptimal;
+showDemoButton.onclick = viewOptimal;
 
 window.requestAnimationFrame(loop);
 
 // TODO:
-// - Remove the demo state, and instead the demo can be viewed by each player individually during the free/end states.
+// - Prevent infinibuffering of moves in the free/end states
 // - Add a proper random-board generation system
 // - Clean up the UI, make it clearer when the state and round transition changes
 // - Tag game
-// - Allow selecting the settings
+// - Allow selecting the settings before starting the game
 // - Allow re-starting a game
 // - Allow more than one game on the server
+// - Change the vote types to be enums
 
 </script>
 

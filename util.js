@@ -10,6 +10,13 @@ String.prototype.count=function(c) {
 	return result;
 };
 
+String.prototype.capitalized = function(s) {
+	if (!s) {
+		return s;
+	}
+	return s[0].toUpperCase() + s.substring(1).toLowerCase();
+}
+
 export class Mulberry32 {
 	constructor(a) {
 		this.seed = a;

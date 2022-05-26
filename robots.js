@@ -4,7 +4,7 @@ import { isupper, intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, a
 
 export const Symbol = makeEnum(["Star", "Moon", "Gear", "Saturn", "Warp"]);
 export const Color = makeEnum(["Yellow", "Green", "Red", "Blue"]);
-export const State = makeEnum(['Start', 'Bid', 'Solve', 'Demo', 'Free', 'End']);
+export const State = makeEnum(['Start', 'Bid', 'Solve', 'Free', 'End']);
 
 export class Goal {
 	constructor(color = null, symbol = null) {
@@ -1036,7 +1036,7 @@ export class Game {
 		this.bidTimeout = 60.0;
 		this.solveTimeout = 30.0;
 		this.nextRoundTimeout = 10;
-		this.nextRoundTimeoutMode = TimeoutMode.FirstVote;
+		this.nextRoundTimeoutMode = TimeoutMode.None;
 		this.earlyOut = 2;
 		this.serverTimeOffset = 123456;
 		
@@ -1385,15 +1385,6 @@ export class Game {
 		this.timerStartTime = null;
 		this.currentSolveBid = null;
 		this.playerBids = [];
-	}
-	
-	startDemoState() {
-		this.clearVotes();
-		this.state = State.Demo;
-		this.timerStartTime = null;
-		this.currentSolveBid = null;
-		this.playerBids = [];
-		this.autoResetRobots();
 	}
 	
 	canAutoStartSolve() {
