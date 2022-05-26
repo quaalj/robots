@@ -1027,13 +1027,18 @@ export class PlayerBid {
 	}
 }
 
+export const TimeoutMode = makeEnum(['Auto', 'FirstVote', 'Majority', 'None']);
+
 export class Game {
 	constructor() {
 		// Settings:
 		this.allowMultipleBids = false;
 		this.bidTimeout = 60.0;
-		this.solveTimeout = 60.0;
+		this.solveTimeout = 30.0;
+		this.nextRoundTimeout = 10;
+		this.nextRoundTimeoutMode = TimeoutMode.FirstVote;
 		this.earlyOut = 2;
+		this.serverTimeOffset = 123456;
 		
 		this.tokensToWin = null;
 		
@@ -1238,7 +1243,7 @@ export class Game {
 			console.assert(playerBid == null || playerBid.playerId == playerId);
 
 			if (forceTimeout == null) {
-				forceTimeout = Date.now() + 123456;
+				forceTimeout = Date.now() + this.serverTimeOffset;
 			}
 
 			if (this.allowMultipleBids || playerBid == null) {
@@ -1342,7 +1347,7 @@ export class Game {
 		this.resetRobotPositions();
 		++this.currentSolveBid;
 		if (this.currentSolveBid < this.playerBids.length) {
-			this.timerStartTime = Date.now() + 123456;
+			this.timerStartTime = Date.now() + this.serverTimeOffset;
 		} else {
 			this.startFreeState();
 		}

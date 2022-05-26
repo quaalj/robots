@@ -37,7 +37,7 @@ div.player_div {
 <span id="game_info"></span>
 <br>
 
-<span class="bid solve">
+<span class="bid solve free">
 	<span id="timer"></span>  <span id="num_moves" class="solve"></span>
 	<br>
 </span>
@@ -63,6 +63,7 @@ div.player_div {
 	<button id="demo">View Optimal</button>
 	<button id="reset_robots">Reset Robots</button>
 	<button id="next" class="playing free">Next Round</button>
+	<button id="wait" class="playing free">Wait Please</button>
 	<br>
 </span>
 
@@ -115,6 +116,7 @@ let joinButton = document.getElementById('join_game');
 let leaveButton = document.getElementById('leave_game');
 let renameButton = document.getElementById('rename_button');
 let nextRoundButton = document.getElementById('next');
+let waitRoundButton = document.getElementById('wait');
 let gentlemanButton = document.getElementById('gentleman');
 let resetRobotsButton = document.getElementById('reset_robots');
 let skipDemoButton = document.getElementById('skip_demo');
@@ -525,6 +527,9 @@ function updateUI() {
 		} else if (game.state == State.Solve) {
 			let solveTimeLeft = Math.max((game.solveTimeout * 1000) - serverTimerElapsed, 0);
 			timer.textContent = epochDeltaToTime(solveTimeLeft);
+		} else if (game.state == State.Free) {
+			let nextRoundTimeLeft = Math.max((game.nextRoundTimeout * 1000) - serverTimerElapsed, 0);
+			timer.textContent = epochDeltaToTime(nextRoundTimeLeft);
 		}
 	} else {
 		timer.textContent = "";
@@ -555,6 +560,7 @@ function updateUI() {
 		
 		gentlemanButton.disabled = player.vote == 'SKIPBID';
 		nextRoundButton.disabled = player.vote == 'NEXT';
+		waitRoundButton.disabled = player.vote == 'WAIT';
 		skipDemoButton.disabled = player.vote == 'SKIPDEMO';
 		showDemoButton.disabled = (player.vote == 'DEMO' || !demoAvailable);
 		
@@ -597,6 +603,12 @@ function voteSkipDemo() {
 function voteNextRound() {
 	if (socket != null) {
 		socket.send(`VOTE NEXT`);
+	}
+}
+
+function voteWaitNextRound() {
+	if (socket != null) {
+		socket.send('VOTE WAIT');
 	}
 }
 
@@ -1429,6 +1441,7 @@ joinButton.onclick = joinGame;
 leaveButton.onclick = leaveGame;
 renameButton.onclick = tryRename;
 nextRoundButton.onclick = voteNextRound;
+waitRoundButton.onclick = voteWaitNextRound;
 gentlemanButton.onclick = voteGentleman;
 resetRobotsButton.onclick = revertMoves;
 skipDemoButton.onclick = voteSkipDemo;
@@ -1437,10 +1450,13 @@ showDemoButton.onclick = voteViewOptimal;
 window.requestAnimationFrame(loop);
 
 // TODO:
-// - Add a timer to round end (start counting when first player votes, auto-start when all players vote, maybe add a 'wait' vote for players to explicitly hold)
+// - Remove the demo state, and instead the demo can be viewed by each player individually during the free/end states.
 // - Add a proper random-board generation system
 // - Clean up the UI, make it clearer when the state and round transition changes
 // - Tag game
+// - Allow selecting the settings
+// - Allow re-starting a game
+// - Allow more than one game on the server
 
 </script>
 

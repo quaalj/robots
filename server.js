@@ -5,7 +5,7 @@ import path from 'path';
 import url from 'url';
 import crypto from 'crypto';
 
-import { Game, State, Player, Goal, RobotMove } from './robots.js';
+import { Game, State, Player, Goal, RobotMove, TimeoutMode } from './robots.js';
 import { Point, Direction, arrayRemove, intdiv, isAnyOf, arrayFind, arrayContains } from './util.js';
 import { Worker } from "worker_threads";
 
@@ -25,26 +25,21 @@ let redirects = {
 
 let cachedFiles = {};
 
-var game = new Game();
+let game = new Game();
 game.resetGame(4, Math.random() * 2000000000);
 game.startBidState();
 
-var clients = {};
+let clients = {};
 
-var moveSequence = [];
-var redoStack = [];
+let moveSequence = [];
+let redoStack = [];
 
-var currentTimerId = null;
+let currentTimerId = null;
 
-var solutionWorker = new Worker("./solutionWorker.js");
-var demoSequence = null;
+let solutionWorker = new Worker("./solutionWorker.js");
+let demoSequence = null;
 
-var demoStep = -1;
-var demoInterval = null;
-
-const DEMO_STEP_SPEED = 1000;
-const DEMO_WARM_UP_TIME = 1; // number of steps before the animation starts
-const DEMO_LINGER_TIME = 5; // number of steps after demo is finished before it restarts
+let readyNextRound = false;
 
 class Client {
 	constructor(key) {
@@ -437,25 +432,22 @@ function updateSolveState() {
 		sendAll(commands.join('\n'));
 		currentTimerId = setTimeout(advanceSolveState, Math.floor(game.solveTimeout * 1000));
 	} else {
-		sendAll(makeGameStateCommand(State.Free));
+		let commands = [makeGameStateCommand(State.Free)];
+		if (game.nextRoundTimeoutMode == TimeoutMode.Auto) {
+			startNextRoundTimer();
+			commands.push(makeStartTimerCommand());
+		}
+		sendAll(commands.join('\n'));
 	}
 }
 
 let stateVotes = {}
 stateVotes[State.Bid] = ['SKIPBID'];
 stateVotes[State.Demo] = ['SKIPDEMO'];
-stateVotes[State.Free] = ['DEMO', 'NEXT'];
+stateVotes[State.Free] = ['DEMO', 'NEXT', 'WAIT'];
 stateVotes[State.End] = ['DEMO'];
 
 let consensusVotes = ['SKIPBID', 'SKIPDEMO', 'NEXT'];
-
-function votesInState(state) {
-	let list = stateVotes[state];
-	if (list !== undefined) {
-		return list;
-	}
-	return [];
-}
 
 function voteAllowedInState(state, vote) {
 	let list = stateVotes[state];
@@ -473,14 +465,10 @@ function stateOptionIndex(state, vote) {
 	return -1;
 }
 
-function checkVoteState(players, state) {
-	let votes = {};
+function collectVotes(players, state) {
+	let votes = new Map();
 	let numVotes = 0;
-	let numPlayers = Object.keys(players).length;
-	
-	let maxVotes = -1;
-	let maxVoteType = null;
-	
+
 	for (let playerId in players) {
 		let player = players[playerId];
 		if (!voteAllowedInState(state, player.vote)) {
@@ -489,15 +477,20 @@ function checkVoteState(players, state) {
 		}
 
 		numVotes += 1;
-		
-		if (player.vote in votes) {
-			votes[player.vote] += 1;
+		let currentVotes = votes.get(player.vote);
+		if (currentVotes !== undefined) {
+			votes.set(player.vote, currentVotes + 1);
 		} else {
-			votes[player.vote] = 1;
+			votes.set(player.vote, 1);
 		}
 	}
 	
-	if (numVotes <= 0) {
+	return votes;
+}
+
+function checkVoteState(players, state) {
+	let votes = collectVotes(players, state);
+	if (votes.size <= 0) {
 		return null;
 	}
 	
@@ -509,18 +502,24 @@ function checkVoteState(players, state) {
 		}
 		return lhs[1] - rhs[1];
 	}
-	
-	let sortedVotes = Object.entries(votes).sort(stateVoteSort).reverse();
+
+	let numVotes = Array.from(votes.values()).reduce((a, b) => a + b, 0);
+	let numPlayers = Object.keys(players).length;
+	let sortedVotes = Array.from(votes.entries()).sort(stateVoteSort).reverse();
 	let remainingVotes = numPlayers - numVotes;
 	
 	let secondMostVotes = 0;
 	if (sortedVotes.length > 1) {
 		secondMostVotes = sortedVotes[1][1];
 	}
+
+	// Never advance if there is a wait vote pending
+	if (votes.has('WAIT')) {
+		return null;
+	}
 	
 	// These bids require consensus (or at least all people to have voted)
 	if (arrayContains(consensusVotes, sortedVotes[0][0])) {
-		console.log(`Remaining votes ${remainingVotes}`);
 		if (remainingVotes == 0) {
 			return sortedVotes[0][0];
 		} else {
@@ -540,9 +539,26 @@ function nextRound() {
 	let commands = [makeGameStateCommand(game.state), makeRobotResetCommand()]
 	sendAll(commands.join('\n'));
 
+	clearTimer();
 	endSolution();
 	workOnSolution();
-	endDemo();
+	readyNextRound = false;
+}
+
+function startNextRoundTimer() {
+	clearTimer();
+	game.timerStartTime = Date.now() + game.serverTimeOffset;
+	currentTimerId = setTimeout(nextRoundTimeout, game.nextRoundTimeout * 1000.0);
+	readyNextRound = false;
+}
+
+function nextRoundTimeout() {
+	let votes = collectVotes(game.players, game.state);
+	if (votes.get('WAIT') === undefined) {
+		nextRound();
+	} else {
+		readyNextRound = true;
+	}
 }
 
 function startDemo() {
@@ -559,13 +575,6 @@ function startDemo() {
 
 	let command = [makeRobotResetCommand(), makeGameStateCommand(game.state), makeRobotFinalPositionCommand(), makeRobotSequenceCommand(demoSequence)];
 	sendAll(command.join('\n'));
-}
-
-function endDemo() {
-	if (demoInterval != null) {
-		clearInterval(demoInterval);
-		demoInterval = null;
-	}
 }
 
 function executeVote(vote) {
@@ -592,7 +601,7 @@ function clearVotes() {
 function doCommand(client, command, args) {
 	if (command == 'SYNC_TIME') {
 		// Use a constant time offset to ensure we are actually synchronizing
-		client.socket.send(makeTimeSyncCommand(args[0], Date.now() + 123456));
+		client.socket.send(makeTimeSyncCommand(args[0], Date.now() + game.serverTimeOffset));
 	} else if (command == 'JOIN_GAME') {
 		let desiredName = game.makeValidName(args[0]);
 		client.playerId = game.addPlayer(desiredName, null);
@@ -721,18 +730,37 @@ function doCommand(client, command, args) {
 		}
 	} else if (command == 'VOTE') {
 		let player = game.getPlayer(client.playerId);
-		if (player.vote == null) {
-			let isValidVote = voteAllowedInState(game.state, args[0]);
-			if (isValidVote) {
-				player.vote = args[0];
-				let majorityVote = checkVoteState(game.players, game.state);
-				if (majorityVote == null) {
-					sendAll(makePlayerVoteCommand(player));
-				} else {
-					executeVote(majorityVote);
+		let isValidVote = voteAllowedInState(game.state, args[0]);
+		if (isValidVote) {
+			player.vote = args[0];
+			let votes = collectVotes(game.players, game.state);
+			let commands = [makePlayerVoteCommand(player)];
+
+			if (game.state == State.Free) {
+				if (game.timerStartTime != null && readyNextRound) {
+					if (votes.get('WAIT') === undefined) {
+						nextRound();
+					}
+				} else if (game.timerStartTime == null && isAnyOf(game.nextRoundTimeoutMode, TimeoutMode.FirstVote, TimeoutMode.Majority)) {
+					let numPlayers = Object.keys(game.players).length;
+					let voteThreshold = game.nextRoundTimeoutMode == TimeoutMode.FirstVote ? 1 : intdiv(numPlayers + 1, 2);
+
+					if (votes.get('NEXT') >= voteThreshold) {
+						startNextRoundTimer();
+						commands.push(makeStartTimerCommand());
+					}
 				}
 			}
-		}	
+
+			if (commands.length > 0) {
+				sendAll(commands.join('\n'));
+			}
+
+			let majorityVote = checkVoteState(game.players, game.state);
+			if (majorityVote != null) {
+				executeVote(majorityVote);
+			}
+		}
 	}
 }
 
