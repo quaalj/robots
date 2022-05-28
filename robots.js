@@ -1035,9 +1035,9 @@ export class Game {
 		this.allowMultipleBids = false;
 		this.bidTimeout = 60.0;
 		this.solveTimeout = 30.0;
-		this.nextRoundTimeout = 10;
-		this.nextRoundTimeoutMode = TimeoutMode.None;
-		this.earlyOut = 2;
+		this.nextRoundTimeout = 10.0;
+		this.nextRoundTimeoutMode = TimeoutMode.FirstVote;
+		this.earlyOut = 3;
 		this.serverTimeOffset = 123456;
 		
 		this.tokensToWin = null;

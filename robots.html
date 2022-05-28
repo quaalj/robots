@@ -100,6 +100,9 @@ const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 // don't want people cheating...
 const QUIET_MODE = false;
 
+const MAX_SOLVE_BUFFER = 5;
+const MAX_FREE_BUFFER = 2;
+
 let bidInput = document.getElementById('bid_input');
 let nameInput = document.getElementById('name_input');
 let revertButton = document.getElementById('revert');
@@ -790,6 +793,10 @@ function isClientSolving() {
 	return currentSolvingPlayer != null && playerId != null && currentSolvingPlayer == playerId;
 }
 
+function getMaxBufferSize() {
+	return isAnyOf(game.state, State.Free, State.End) ? MAX_FREE_BUFFER : MAX_SOLVE_BUFFER;
+}
+
 function doDirectionMove(direction) {
 	if (selection.hasSelection()) {
 		let target = selection.getMoveEndpoint(direction);
@@ -800,8 +807,11 @@ function doDirectionMove(direction) {
 				moveCount = moveSequence.length;
 				updateUI();
 			}
-			socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
-			moveRobotInDirection(selection.selectedRobot, direction, isAnyOf(game.state, State.Solve) || isViewingDemo(), moveCount - 1);
+
+			if (robots[selection.selectedRobot].positionQueue.length <= getMaxBufferSize()) {
+				socket.send(`MOVE_ROBOT ${selection.selectedRobot} ${direction}`);
+				moveRobotInDirection(selection.selectedRobot, direction, isAnyOf(game.state, State.Solve) || isViewingDemo(), moveCount - 1);
+			}
 			return true;
 		}
 	}
@@ -834,11 +844,14 @@ canvas.addEventListener('click', function(evt) {
 		if (selection.hasSelection()) {
 			if (!robots[selection.selectedRobot].getCell().equals(cellPos)) {
 				if (isFree && evt.shiftKey) {
-					if (arrayFind(game.robots, cellPos) == -1) {
-						socket.send(`FREE_MOVE_ROBOT ${selection.selectedRobot} ${cellPos.x} ${cellPos.y}`);
-						robots[selection.selectedRobot].moveTo(cellPos);
-						didAction = true;
+					let cell = game.board.getCell(cellPos);
+					if (arrayFind(game.robots, cellPos) == -1 && cell != null && !cell.fullyFenced() && cell.bumper === null) {
+						if (robots[selection.selectedRobot].positionQueue.length <= getMaxBufferSize()) {
+							socket.send(`FREE_MOVE_ROBOT ${selection.selectedRobot} ${cellPos.x} ${cellPos.y}`);
+							robots[selection.selectedRobot].moveTo(cellPos);
+						}
 					}
+					didAction = true;
 				} else {
 					for (let dir = 0; dir < 4; ++dir) {
 						let target = selection.getMoveEndpoint(dir);
@@ -1479,7 +1492,6 @@ showDemoButton.onclick = viewOptimal;
 window.requestAnimationFrame(loop);
 
 // TODO:
-// - Prevent infinibuffering of moves in the free/end states
 // - Add a proper random-board generation system
 // - Clean up the UI, make it clearer when the state and round transition changes
 // - Tag game

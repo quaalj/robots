@@ -662,9 +662,14 @@ function doCommand(client, command, args) {
 		if (isAnyOf(game.state, State.Free, State.End)) {
 			let robotId = parseInt(args[0]);
 			let pos = new Point(parseInt(args[1]), parseInt(args[2]));
-			game.robots[robotId] = pos;
-			let commands = [makeRobotMoveCommand(robotId)];
-			sendAll(commands.join('\n'));
+			let cell = game.board.getCell(pos);
+			if (cell != null && !cell.fullyFenced() && cell.bumper == null) {
+				game.robots[robotId] = pos;
+				let commands = [makeRobotMoveCommand(robotId)];
+				sendAll(commands.join('\n'));
+			} else {
+				client.socket.send(makeRobotMoveCommand(robotId))
+			}
 		}
 	} else if (command == 'MOVE_ROBOT') {
 		if (client.playerId != null && game.playerAllowedMove(client.playerId)) {
@@ -693,6 +698,8 @@ function doCommand(client, command, args) {
 				}
 	
 				sendAll(commands.join('\n'));
+			} else {
+				client.socket.send(makeRobotMoveCommand(robotId))
 			}
 		}
 	} else if (command == 'REDO_ROBOT') {
