@@ -23,14 +23,20 @@ let redirects = {
 	'/favicon.ico': '/warp.png',
 };
 
-let cachedFiles = {};
+let cachedFiles = new Map();
+
+class Client {
+	constructor(key) {
+		this.playerId = null;
+		this.socket = null;
+		this.key = key;
+	}
+}
 
 let game = new Game();
 game.resetGame(4, Math.random() * 2000000000);
 game.startBidState();
-
-let clients = {};
-
+let clients = new Map();
 let moveSequence = [];
 let redoStack = [];
 
@@ -41,21 +47,15 @@ let demoSequence = null;
 
 let readyNextRound = false;
 
-class Client {
-	constructor(key) {
-		this.playerId = null;
-		this.socket = null;
-		this.key = key;
-	}
-}
-
 function getContentType(filename) {
 	let ext = path.extname(filename)
 	return contentTypeRedirects[ext] ?? 'text/html';
 }
 
 function serveFile(clientKey, req, res, filename, filedata) {
-	//cachedFiles[filename] = filedata;
+	if (filedata != null) {
+		cachedFiles.set(filename, filedata);
+	}
 
 	if (filedata == null || filedata === undefined) {
 		console.log(`File ${filename} not found`);
@@ -75,12 +75,12 @@ function serveFile(clientKey, req, res, filename, filedata) {
 	res.writeHead(200, headers);
 	res.write(filedata);
 	return res.end();
-} 
+}
 
 function handleError(clientKey, req, res, err, filename) {
 	err = err.toString();
 	if (err.search(`Error: ENOENT: no such file or directory, open `) == 0) {
-		cachedFiles[filename] = null;
+		cachedFiles.delete(filename);
 		return serveFile(clientKey, req, res, filename, null);
 	}
 	console.error(`Could not read ${filename} file: ${err}`);
@@ -90,9 +90,9 @@ function handleError(clientKey, req, res, err, filename) {
 }
 
 function parseCookies(request) {
-    const list = {};
+    const results = new Map();
     const cookieHeader = request.headers?.cookie;
-    if (!cookieHeader) return list;
+    if (!cookieHeader) return results;
 
     cookieHeader.split(`;`).forEach(function(cookie) {
         let [ name, ...rest] = cookie.split(`=`);
@@ -100,23 +100,23 @@ function parseCookies(request) {
         if (!name) return;
         const value = rest.join(`=`).trim();
         if (!value) return;
-        list[name] = decodeURIComponent(value);
+        results.set(name, decodeURIComponent(value));
     });
 
-    return list;
+    return results;
 }
 
 function getClientKey(request) {
 	let cookies = parseCookies(request);
-	let clientKey = cookies['clientkey'] ?? undefined;
+	let clientKey = cookies.get('clientkey') ?? undefined;
 	if (clientKey === undefined) {
 		clientKey = crypto.randomUUID();
 		console.log(`Client generating new cookie ${clientKey}`);
 	}
 	
-	if (clients[clientKey] === undefined) {
-		clients[clientKey] = new Client(clientKey);
-		console.log(`New Client Object ${clients[clientKey]}`);
+	if (clients.get(clientKey) === undefined) {
+		clients.set(clientKey, new Client(clientKey));
+		console.log(`New Client Object ${clients.get(clientKey)}`);
 	}
 	
 	return clientKey;
@@ -131,9 +131,10 @@ function accept(req, res) {
 		let originalUrl = decodeURIComponent(q.pathname);
 		let resolvedFile = redirects[originalUrl] ?? originalUrl;
 		
-		if (cachedFiles[resolvedFile] !== undefined) {
+		let cachedEntry = cachedFiles.get(resolvedFile);
+		if (cachedEntry !== undefined) {
 			console.log(`Serving from cache ${resolvedFile}`);
-			return serveFile(clientKey, req, res, resolvedFile, cachedFiles[resolvedFile]);
+			return serveFile(clientKey, req, res, resolvedFile, cachedEntry);
 		}
 		
 		fs.readFile(directory + resolvedFile, function(err, data) {
@@ -157,7 +158,7 @@ function accept(req, res) {
 }
 
 function onSocketConnect(clientKey, ws) {
-	let client = clients[clientKey];
+	let client = clients.get(clientKey);
 	
 	if (client === undefined) {
 		console.log(`Rejecting client ${clientKey}`);
@@ -172,12 +173,12 @@ function onSocketConnect(clientKey, ws) {
 	
 	ws.on('message', function (message) {
 		console.log(`Player = ${clientKey} : Message = ${message}`);
-		onMessage(clients[clientKey], message.toString());
+		onMessage(clients.get(clientKey), message.toString());
 	});
 
 	ws.on('close', function () {
 		console.log(`${clientKey} closed the connection.`);
-		clients[clientKey].socket = null;
+		clients.get(clientKey).socket = null;
 	});
 }
 
@@ -202,10 +203,9 @@ function sendAllExcept(message, exceptFor) {
 	if (exceptFor != null) {
 		console.log(`Except for ${exceptFor}`);
 	}
-	for (const clientKey in clients) {
+	for (const [clientKey, client] of clients) {
 		console.log(`ClientKey = ${clientKey}`);
 		if (clientKey != exceptFor) {
-			let client = clients[clientKey];
 			if (client !== undefined && client.socket != null) {
 				client.socket.send(message);
 			}
@@ -244,11 +244,10 @@ function syncGame(client) {
 	let commands = [];
 	commands.push(makeBoardCommand());
 	
-	for (let playerId in game.players) {
-		let player = game.getPlayer(playerId);
+	for (let player of game.getPlayers()) {
 		commands.push(makePlayerJoinedCommand(player.id, player.name));
 		if (player.tokens.length > 0) {
-			commands.push(makeGivePlayerTokensCommand(playerId, ...player.tokens));
+			commands.push(makeGivePlayerTokensCommand(player.id, ...player.tokens));
 		}
 		if (player.vote != null) {
 			commands.push(makePlayerVoteCommand(player));
@@ -463,8 +462,7 @@ function collectVotes(players, state) {
 	let votes = new Map();
 	let numVotes = 0;
 
-	for (let playerId in players) {
-		let player = players[playerId];
+	for (let player of players) {
 		if (!voteAllowedInState(state, player.vote)) {
 			player.vote = null;
 			continue;
@@ -498,7 +496,7 @@ function checkVoteState(players, state) {
 	}
 
 	let numVotes = Array.from(votes.values()).reduce((a, b) => a + b, 0);
-	let numPlayers = Object.keys(players).length;
+	let numPlayers = players.length;
 	let sortedVotes = Array.from(votes.entries()).sort(stateVoteSort).reverse();
 	let remainingVotes = numPlayers - numVotes;
 	
@@ -547,7 +545,7 @@ function startNextRoundTimer() {
 }
 
 function nextRoundTimeout() {
-	let votes = collectVotes(game.players, game.state);
+	let votes = collectVotes(game.getPlayers(), game.state);
 	if (votes.get('WAIT') === undefined) {
 		nextRound();
 	} else {
@@ -572,7 +570,8 @@ function startDemo(clientKey) {
 
 	game.setRobotPositions(cachedRobotPositions);
 
-	clients[clientKey].socket.send(commands.join('\n'));
+	let client = clients.get(clientKey);
+	client.socket.send(commands.join('\n'));
 }
 
 function executeVote(vote) {
@@ -601,7 +600,7 @@ function doCommand(client, command, args) {
 	} else if (command == 'JOIN_GAME') {
 		let desiredName = game.makeValidName(args[0]);
 		client.playerId = game.addPlayer(desiredName, null);
-		client.cachedName = game.players[client.playerId].name;
+		client.cachedName = game.getPlayer(client.playerId).name;
 		
 		let playerJoinedCommand = makePlayerJoinedCommand(client.playerId, client.cachedName);
 		let commands = [playerJoinedCommand, makeAssignPlayerCommand(client.playerId)];
@@ -653,7 +652,7 @@ function doCommand(client, command, args) {
 
 			// TODO: figure out a way to concat this with the previous commands
 			// Also TODO: don't send the timer data if this is triggered on the first bid
-			let voteComplete = checkVoteState(game.players, game.state);
+			let voteComplete = checkVoteState(game.getPlayers(), game.state);
 			if (voteComplete != null) {
 				executeVote(voteComplete);
 			}
@@ -736,7 +735,7 @@ function doCommand(client, command, args) {
 		let isValidVote = voteAllowedInState(game.state, args[0]);
 		if (isValidVote) {
 			player.vote = args[0];
-			let votes = collectVotes(game.players, game.state);
+			let votes = collectVotes(game.getPlayers(), game.state);
 			let commands = [makePlayerVoteCommand(player)];
 
 			if (game.state == State.Free) {
@@ -745,7 +744,7 @@ function doCommand(client, command, args) {
 						nextRound();
 					}
 				} else if (game.timerStartTime == null && isAnyOf(game.nextRoundTimeoutMode, TimeoutMode.FirstVote, TimeoutMode.Majority)) {
-					let numPlayers = Object.keys(game.players).length;
+					let numPlayers = game.getNumPlayers();
 					let voteThreshold = game.nextRoundTimeoutMode == TimeoutMode.FirstVote ? 1 : intdiv(numPlayers + 1, 2);
 
 					if (votes.get('NEXT') >= voteThreshold) {
@@ -759,7 +758,7 @@ function doCommand(client, command, args) {
 				sendAll(commands.join('\n'));
 			}
 
-			let majorityVote = checkVoteState(game.players, game.state);
+			let majorityVote = checkVoteState(game.getPlayers(), game.state);
 			if (majorityVote != null) {
 				executeVote(majorityVote);
 			}

@@ -1,6 +1,5 @@
 import { Board, Bumper, RobotState, Color, solveBoard, Goal } from "../robots.js";
 import { Point, Direction } from "../util.js";
-import assert from 'assert';
 
 describe("Board", function() {
     it("moves robots", function() {
@@ -268,50 +267,6 @@ describe("RobotState", function() {
             expect(outRobots[i].y).toBe(robots[i].y);
         }
     });
-
-    // it("normalizes robot state for warp", function() {
-    //     let robots = [new Point(0, 0), new Point(1, 1), new Point(2, 2), new Point(3, 3)];
-    //     let robotsCopy = [robots[1].clone(), robots[2].clone(), robots[0].clone(), robots[3].clone()];
-    //     let state = new RobotState(robots, true, 0);
-    //     let stateCopy = new RobotState(robotsCopy, true, 0);
-
-    //     for (let i = 0; i < robots.length; ++i) {
-    //         expect(state.robots[i].x).toBe(stateCopy.robots[i].x);
-    //         expect(state.robots[i].y).toBe(stateCopy.robots[i].y);
-    //     }
-    // });
-
-    // it("normalizes robot state except for lead for non-warp", function() {
-    //     let robots = [new Point(1, 1), new Point(0, 0), new Point(2, 2), new Point(3, 3)];
-    //     let robotsCopy = [robots[0].clone(), robots[2].clone(), robots[1].clone(), robots[3].clone()];
-    //     let state = new RobotState(robots, false, 0);
-    //     let stateCopy = new RobotState(robotsCopy, false, 0);
-
-    //     for (let i = 0; i < robots.length; ++i) {
-    //         expect(state.robots[i].x).toBe(stateCopy.robots[i].x);
-    //         expect(state.robots[i].y).toBe(stateCopy.robots[i].y);
-    //     }
-    // });
-
-    // it("has the same key for warp", function() {
-    //     let robots = [new Point(0, 0), new Point(1, 1), new Point(2, 2), new Point(3, 3)];
-    //     let robotsCopy = [robots[1].clone(), robots[2].clone(), robots[0].clone(), robots[3].clone()];
-    //     let state = new RobotState(robots, true, 0);
-    //     let stateCopy = new RobotState(robotsCopy, true, 0);
-
-    //     expect(state.toString()).toBe(stateCopy.toString());
-    //     expect(state.toInt()).toBe(stateCopy.toInt());
-    // });
-
-    // it("has the same key for non-warp", function() {
-    //     let robots = [new Point(1, 1), new Point(0, 0), new Point(2, 2), new Point(3, 3)];
-    //     let robotsCopy = [robots[0].clone(), robots[2].clone(), robots[1].clone(), robots[3].clone()];
-    //     let state = new RobotState(robots, false, 0);
-    //     let stateCopy = new RobotState(robotsCopy, false, 0);
-
-    //     expect(state.toString()).toBe(stateCopy.toString());
-    //     expect(state.toInt()).toBe(stateCopy.toInt());
-    // });
 });
 
 describe("solveBoard", function() {

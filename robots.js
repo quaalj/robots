@@ -78,22 +78,29 @@ export class Bumper {
 		Object.defineProperty(this, 'slant', { 'value': slant });
 	}
 
+	static colorMap = null;
+	static reverseColorMap = null;
+
 	static getColorMap() {
-		let colorMap = new Array(Color.allValues.length);
-		colorMap[Color.Yellow] = 'y';
-		colorMap[Color.Red] = 'r';
-		colorMap[Color.Blue] ='u';
-		colorMap[Color.Green] = 'g';
-		return colorMap;
+		if (Bumper.colorMap == null) {
+			Bumper.colorMap = new Array(Color.allValues.length);
+			Bumper.colorMap[Color.Yellow] = 'y';
+			Bumper.colorMap[Color.Red] = 'r';
+			Bumper.colorMap[Color.Blue] ='u';
+			Bumper.colorMap[Color.Green] = 'g';
+		}
+		return Bumper.colorMap;
 	}
 
 	static getReverseColorMap() {
-		let colorMap = Bumper.getColorMap();
-		let obj = {};
-		for (let i = 0; i < colorMap.length; ++i) {
-			obj[colorMap[i]] = i;
+		if (Bumper.reverseColorMap == null) {
+			Bumper.reverseColorMap = {};
+			let colorMap = Bumper.getColorMap();
+			for (let i = 0; i < colorMap.length; ++i) {
+				Bumper.reverseColorMap[colorMap[i]] = i;
+			}
 		}
-		return obj;
+		return Bumper.reverseColorMap;
 	}
 
 	static fromInt(value) {
@@ -807,20 +814,20 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 };
 
 export function generateRobotPlacement(board, rand) {
-	let testedSpots = {}
+	let testedSpots = new Map();
 	
 	let result = []
 	
 	while (result.length < 4) {
 		let point = rand.randPoint(0, board.width, 0, board.height);
 		
-		if (point in testedSpots) {
+		if (testedSpots.has(point.toString())) {
 			continue;
 		}
 		
 		let cell = board.getCell(point);
 
-		testedSpots[point] = result.length;
+		testedSpots.set(point.toString(), result.length);
 		
 		if (cell.fullyFenced() || cell.goal != null || cell.bumper != null) {
 			continue;
@@ -1042,7 +1049,7 @@ export class Game {
 		
 		this.tokensToWin = null;
 		
-		this.players = {};
+		this.players = new Map();
 		this.timerCountdown = null;
 
 		this.resetGame(4, 0);
@@ -1054,7 +1061,7 @@ export class Game {
 		this.rand = new Mulberry32(boardSeed);
 		this.board = generateBoard(this.rand.randRaw());
 		this.robots = [];
-		for (let i = 0; i < 4; ++i) {
+		for (let i = 0; i < numRobots; ++i) {
 			this.robots.push(new Point(i, 0));
 		}
 		
@@ -1072,10 +1079,9 @@ export class Game {
 	}
 	
 	getNewPlayerKey() {
-		let keys = Object.keys(this.players);
 		let maxKey = 0;
-		for (let i = 0; i < keys.length; ++i) {
-			maxKey = Math.max(maxKey, keys[i]);
+		for (let key of this.players.keys()) {
+			maxKey = Math.max(maxKey, key);
 		}
 		
 		++maxKey;
@@ -1083,11 +1089,11 @@ export class Game {
 	}
 
 	getNumPlayers() {
-		return Object.keys(this.players).length;
+		return this.players.size;
 	}
 	
 	getPlayer(playerId) {
-		return this.players[playerId];
+		return this.players.get(playerId);
 	}
 
 	addPlayer(defaultName = null, forceId = null) {
@@ -1095,17 +1101,13 @@ export class Game {
 			forceId = this.getNewPlayerKey();
 		}
 
-		this.players[forceId] = new Player(forceId, defaultName);
+		this.players.set(forceId, new Player(forceId, defaultName));
 
 		return forceId;
 	}
 
 	getPlayers() {
-		let players = [];
-		for (let playerId in this.players) {
-			players.push(this.players[playerId]);
-		}
-		return players;
+		return Array.from(this.players.values());
 	}
 
 	giveToken(playerId, ...tokens) {
@@ -1138,9 +1140,8 @@ export class Game {
 	}
 	
 	isNameAllowed(name) {
-		let keys = Object.keys(this.players);
-		for (let i = 0; i < keys.length; ++i) {
-			if (name == this.players[keys[i]].name) {
+		for (let player of this.players.values()) {
+			if (name == player.name) {
 				return false;
 			}
 		}
@@ -1148,14 +1149,14 @@ export class Game {
 	}
 	
 	renamePlayer(playerId, name) {
-		this.players[playerId].name = name;
+		this.players.get(playerId).name = name;
 		return name;
 	}
 	
 	removePlayer(playerId) {
-		if (this.players[playerId] !== undefined) {
+		if (this.players.has(playerId)) {
 			// TODO: return unused tokens to the pool?
-			delete this.players[playerId];
+			this.players.delete(playerId);
 		}
 		this.removeBid(playerId);
 	}
@@ -1388,8 +1389,7 @@ export class Game {
 	}
 	
 	canAutoStartSolve() {
-		//return false;
-		if (this.playerBids.length == this.players.length) {
+		if (this.playerBids.length == this.players.size) {
 			if (this.allowMultipleBids) {
 				let minBid = this.earlyOut == null ? 2 : this.earlyOut + 1;
 				for (let i = 0; i < this.playerBids.length; ++i) {
@@ -1404,8 +1404,7 @@ export class Game {
 	}
 	
 	clearVotes() {
-		for (let playerId in this.players) {
-			let player = this.players[playerId];
+		for (let player of this.players.values()) {
 			player.vote = null;
 		}
 	}
