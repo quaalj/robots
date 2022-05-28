@@ -731,8 +731,7 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 	let queue = new BucketPriQueue(MAX_MOVE);
 	queue.insert(0, startingState);
 	let goalPos = board.findGoal(goal);
-	
-	// TODO: need to check for _all_ robots for the warp tile
+
 	if (startingState.checkGoal(goalPos, goal)) {
 		if (earlyOut != null) {
 			return null;
@@ -1025,6 +1024,22 @@ export class PlayerBid {
 		this.timestamp = timestamp;
 	}
 
+	static makeOriginalCompare(players) {
+		return function(lhs, rhs) {
+			let lhsPlayer = players.get(lhs.playerId);
+			let rhsPlayer = players.get(rhs.playerId);
+			if (lhs.amount == rhs.amount) {
+				if (lhsPlayer.getScore() == rhsPlayer.getScore()) {
+					return lhs.timestamp - rhs.timestamp;
+				} else {
+					return lhsPlayer.getScore() - rhsPlayer.getScore();
+				}
+			} else {
+				return lhs.amount - rhs.amount;
+			}
+		}
+	}
+
 	static compare(lhs, rhs) {
 		if (lhs.amount == rhs.amount) {
 			return lhs.timestamp - rhs.timestamp;
@@ -1051,6 +1066,8 @@ export class Game {
 		
 		this.players = new Map();
 		this.timerCountdown = null;
+		this.returnRemovedPlayerTokens = true;
+		this.houseCompareRule = true;
 
 		this.resetGame(4, 0);
 	}
@@ -1155,7 +1172,12 @@ export class Game {
 	
 	removePlayer(playerId) {
 		if (this.players.has(playerId)) {
-			// TODO: return unused tokens to the pool?
+			let player = this.getPlayer(playerId);
+			if (this.returnRemovedPlayerTokens) {
+				for (let token of player.tokens) {
+					this.goalsRemaining.push(token);
+				}
+			}
 			this.players.delete(playerId);
 		}
 		this.removeBid(playerId);
@@ -1337,8 +1359,11 @@ export class Game {
 	startSolveState() {
 		this.clearVotes();
 		this.state = State.Solve;
-		// TODO: add an option to do the stupid compare mode
-		this.playerBids.sort(PlayerBid.compare);
+		if (this.houseCompareRule) {
+			this.playerBids.sort(PlayerBid.compare);
+		} else {
+			this.playerBids.sort(PlayerBid.makeOriginalCompare(this.players));
+		}
 		this.currentSolveBid = -1;
 		this.advanceSolveState();
 	}
@@ -1397,8 +1422,7 @@ export class Game {
 						return false;
 					}
 				}
-			}
-				
+			}	
 			return true;
 		}
 	}

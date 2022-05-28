@@ -586,6 +586,8 @@ function updateUI() {
 		pendingFocusElement.focus();
 		pendingFocusElement = null;
 	}
+
+	updateTokenCount();
 }
 
 function canRename() {
@@ -1221,6 +1223,7 @@ function processPlayerLeft(args) {
 	if (playerNode != null) {
 		playerNode.parentNode.removeChild(playerNode);
 	}
+	updateUI();
 }
 
 function processRenamePlayer(args) {
