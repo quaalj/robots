@@ -1001,8 +1001,8 @@ function doServerCommand(command, args) {
 		processSetBid(args);
 	} else if (command == 'ROBOT_MOVEALL' || command == 'ROBOT_RESET') {
 		processRobotReset(args);
-		if (command == 'ROBOT_RESET' && !isViewingDemo()) {
-			game.originalRobotConfig = [...game.robots];
+		if (command == 'ROBOT_RESET') {
+			game.originalRobotConfig = [...cachedRobotPositions];
 		}
 	} else if (command == 'ROBOT_MOVE') {
 		processRobotMove(args);
@@ -1249,14 +1249,18 @@ function processRobotReset(args) {
 		let robotId = intdiv(i, 2);
 		let dest = new Point(parseInt(args[i]), parseInt(args[i+1]));
 		cachedRobotPositions[robotId] = dest;
-		robots[robotId].warpTo(dest);
+		if (!isViewingDemo()) {
+			robots[robotId].warpTo(dest);
+		}
 	}
 	selection.clearSelection();
 	if (args.length % 2 == 1) {
 		moveCount = parseInt(args[args.length - 1]);
 	}
 
-	clearMoveArrows();
+	if (!isViewingDemo()) {
+		clearMoveArrows();
+	}
 }
 
 function processRobotMove(args) {
