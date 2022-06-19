@@ -1,4 +1,4 @@
-import { isupper, intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, intcmp, shuffle, isAnyOf, isHexDigit, BucketPriQueue } from './util.js';
+import { isupper, intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, arrayFind, arrayContains, shuffle, isAnyOf, isHexDigit, BucketPriQueue } from './util.js';
 
 /// Global Contants
 
@@ -1051,6 +1051,17 @@ export class PlayerBid {
 
 export const TimeoutMode = makeEnum(['Auto', 'FirstVote', 'Majority', 'None']);
 
+function makeStateVotes() {
+	let results = {};
+	results[State.Bid] = ['SKIPBID'];
+	results[State.Free] = ['NEXT', 'WAIT'];
+	results[State.End] = [];
+	return results;
+}
+
+const stateVotes = makeStateVotes();	
+const consensusVotes = ['SKIPBID', 'NEXT'];	
+
 export class Game {
 	constructor() {
 		// Settings:
@@ -1071,7 +1082,27 @@ export class Game {
 
 		this.resetGame(4, 0);
 	}
-	
+
+	static isConsensusVote(vote) {
+		return arrayContains(consensusVotes, vote);
+	}
+
+	static isVoteAllowedInState(state, vote) {
+		let list = stateVotes[state];
+		if (list !== undefined) {
+			return list.includes(vote);
+		}
+		return false;
+	}
+
+	static stateOptionIndex(state, vote) {
+		let list = stateVotes[state];
+		if (list !== undefined) {
+			return arrayFind(list, vote);
+		}
+		return -1;
+	}
+
 	resetGame(numRobots, boardSeed, tokensToWin = null) {
 		this.seed = boardSeed;
 		this.tokensToWin = tokensToWin;
@@ -1431,5 +1462,27 @@ export class Game {
 		for (let player of this.players.values()) {
 			player.vote = null;
 		}
+	}
+
+	collectVotes() {
+		let votes = new Map();
+		let numVotes = 0;
+	
+		for (let player of this.players.values()) {
+			if (!Game.isVoteAllowedInState(this.state, player.vote)) {
+				player.vote = null;
+				continue;
+			}
+	
+			numVotes += 1;
+			let currentVotes = votes.get(player.vote);
+			if (currentVotes !== undefined) {
+				votes.set(player.vote, currentVotes + 1);
+			} else {
+				votes.set(player.vote, 1);
+			}
+		}
+		
+		return votes;
 	}
 }
