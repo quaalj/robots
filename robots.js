@@ -419,7 +419,7 @@ export class Board {
 
 	createRookBoard(targetCell, color) {
 		let queue = [];
-		queue.push([1, targetCell]);
+		queue.push([0, targetCell]);
 		let cells = new Array(this.size.x * this.size.y);
 		let robots = new Array(color + 1);
 		while (queue.length > 0) {
@@ -719,10 +719,6 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 	let botCopy = [...robots]
 	let isWarp = goal.symbol == Symbol.Warp;
 	const MAX_MOVE = 22;
-	// if (!isWarp) {
-	// 	// Move the active robot to the front of the list
-	// 	[botCopy[0], botCopy[goal.color]] = [botCopy[goal.color], botCopy[0]]
-	// }
 
 	let startingState = new RobotState(botCopy, isWarp);
 	let visitedStates = new Map();
