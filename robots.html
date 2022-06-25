@@ -93,7 +93,7 @@ import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } fro
 import { Game, State, Color, Symbol, RobotMove, Goal, solveBoard } from "./robots.js";
 import { TILE_SIZE, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, getRobotImage, getColorValue, drawGoal, drawStartPoint, drawBoard } from "./draw.js";
 
-const ROBOT_TWEEN_SPEED = 32.0;
+const ROBOT_TWEEN_SPEED = 2.0;
 const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 
 // length of shortest path is sent by message from server
@@ -385,34 +385,96 @@ class MoveArrow {
 		return max;
 	}
 
+	getStartX() {
+		let direction = this.getDirection();
+		let offset = TILE_SIZE / 2;
+
+		let isStartFull = this.#isCellFull(this.startPoint);
+
+		let fullStartCellAdjustment = isStartFull ? offset : MoveArrow.PADDING;
+
+		// place start point in center of tile
+		let x1 = this.startPoint.x * TILE_SIZE + offset;
+
+		// shrink arrow length if start cell is full
+		x1 = x1 - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+
+		// displace arrow to the side if cells in the arrow's path already contain arrows
+		x1 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+
+		return x1;
+	}
+
+	getStartY() {
+		let direction = this.getDirection();
+		let offset = TILE_SIZE / 2;
+
+		let isStartFull = this.#isCellFull(this.startPoint);
+
+		let fullStartCellAdjustment = isStartFull ? offset : MoveArrow.PADDING;
+
+		// place start point in center of tile
+		let y1 = this.startPoint.y * TILE_SIZE + offset;
+
+		// shrink arrow length if start cell is full
+		y1 = y1 + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
+
+		// displace arrow to the side if cells in the arrow's path already contain arrows
+		y1 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+
+		return y1;
+	}
+
+	getEndX() {
+		let direction = this.getDirection();
+		let offset = TILE_SIZE / 2;
+
+		let isDestFull = this.#isCellFull(this.endPoint);
+
+		let fullDestCellAdjustment = isDestFull ? offset : MoveArrow.PADDING;
+
+		// place end point in center of tile
+		let x2 = this.endPoint.x * TILE_SIZE + offset;
+
+		// shrink arrow length if destination cell is full
+		x2 = x2 + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
+
+		// displace arrow to the side if cells in the arrow's path already contain arrows
+		x2 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+
+		return x2;
+	}
+
+	getEndY() {
+		let direction = this.getDirection();
+		let offset = TILE_SIZE / 2;
+
+		let isDestFull = this.#isCellFull(this.endPoint);
+
+		let fullDestCellAdjustment = isDestFull ? offset : MoveArrow.PADDING;
+
+		// place end point in center of tile
+		let y2 = this.endPoint.y * TILE_SIZE + offset;
+
+		// shrink arrow length if destination cell is full
+		y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
+
+		// displace arrow to the side if cells in the arrow's path already contain arrows
+		y2 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+
+		return y2;
+	}
+
 	draw(canvas) {
 		let ctx = canvas.getContext("2d");
 		let direction = this.getDirection();
 		let offset = TILE_SIZE / 2;
 
-		let isStartFull = this.#isCellFull(this.startPoint);
-		let isDestFull = this.#isCellFull(this.endPoint);
-
-		let fullStartCellAdjustment = isStartFull ? offset : MoveArrow.PADDING;
-		let fullDestCellAdjustment = isDestFull ? offset : MoveArrow.PADDING;
-
 		// place start and end points in center of tile
-		let x1 = this.startPoint.x * TILE_SIZE + offset;
-		let y1 = this.startPoint.y * TILE_SIZE + offset;
-		let x2 = this.endPoint.x * TILE_SIZE + offset;
-		let y2 = this.endPoint.y * TILE_SIZE + offset;
-
-		// shrink arrow length if start or destination cell is full
-		x1 = x1 - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
-		y1 = y1 + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
-		x2 = x2 + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
-		y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
-
-		// displace arrow to the side if cells in the arrow's path already contain arrows
-		x1 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
-		y1 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
-		x2 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
-		y2 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+		let x1 = this.getStartX();
+		let y1 = this.getStartY();
+		let x2 = this.getEndX();
+		let y2 = this.getEndY();
 
 		// for some nice arrow tweening
 		if(direction == Direction.Left || direction == Direction.Right) {
@@ -444,25 +506,27 @@ class MoveArrow {
 			ctx.moveTo(x2, y2);
 			ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE)
 			ctx.stroke();
-		} else {
-			let x3 = this.nextArrow.startPoint.x * TILE_SIZE + offset;
-			let y3 = this.nextArrow.startPoint.y * TILE_SIZE + offset;
 
-			x3 = x3 - offset * (this.nextArrow.getDirection() % 2 - 1) * (this.nextArrow.getDirection() - 1);
-			y3 = y3 + offset * (this.nextArrow.getDirection() % 2) * (this.nextArrow.getDirection() - 2);
+		} else if (this.tweenAlpha == 1.0) {
+			let x3 = this.nextArrow.getStartX();
+			let y3 = this.nextArrow.getStartY();
+			let r = Math.min(Math.abs(x2-x3), Math.abs(y2-y3));
 
-			x3 += MoveArrow.DODGE_WIDTH * this.nextArrow.dodge * (this.nextArrow.getDirection() % 2) * (this.nextArrow.getDirection() - 2);
-			y3 += MoveArrow.DODGE_WIDTH * this.nextArrow.dodge * (this.nextArrow.getDirection() % 2 - 1) * (this.nextArrow.getDirection() - 1);
+			let ccw = direction === (this.nextArrow.getDirection() + 1) % 4;
+			let thetaStart = (Math.PI / 2)  + (Math.PI / 2) * direction + (ccw ? Math.PI : 0);
+			let thetaEnd =  ccw ? thetaStart - Math.PI / 2 : thetaStart + Math.PI / 2;
 
-			ctx.beginPath();
-			ctx.moveTo(x2, y2);
+			let cx, cy;
 			if(direction == Direction.Right || direction == Direction.Left)
 			{
-				ctx.arcTo(x3, y2, x3, y3, Math.min(Math.abs(x2-x3), Math.abs(y2-y3)));
+				cx = x2;
+				cy = y3;
 			} else {
-				ctx.arcTo(x2, y3, x3, y3, Math.min(Math.abs(x2-x3), Math.abs(y2-y3)));
+				cx = x3;
+				cy = y2;
 			}
-			ctx.moveTo(x3, y3);
+			ctx.beginPath();
+			ctx.arc(cx, cy, r, thetaStart, thetaEnd, ccw);
 			ctx.stroke();
 		}
 	}
@@ -982,7 +1046,7 @@ function loop(timestamp) {
 	}
 	
 	updateUI();
-	
+
 	drawGame(game, canvas);
 
 	if(isAnyOf(game.state, State.Solve, State.Free) || isViewingDemo()) {
