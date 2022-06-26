@@ -94,7 +94,7 @@ import { Point, Direction, strcmp, intdiv, arrayRemove, arrayFind, isAnyOf } fro
 import { Game, State, Color, Symbol, RobotMove, Goal, solveBoard } from "./robots.js";
 import { TILE_SIZE, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, getRobotImage, getColorValue, drawGoal, drawStartPoint, drawBoard } from "./draw.js";
 
-const ROBOT_TWEEN_SPEED = 2.0;
+const ROBOT_TWEEN_SPEED = 32.0;
 const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 
 // length of shortest path is sent by message from server
@@ -327,6 +327,23 @@ class MoveArrow {
 		return result;
 	}
 
+	#drawArrowHead(x, y, theta) {
+		let ctx = canvas.getContext("2d");
+
+		ctx.strokeStyle = getColorValueArrow(this.color);
+		ctx.lineWidth = MoveArrow.LINE_THICKNESS;
+
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		ctx.lineTo(x + Math.cos(theta + 5 * Math.PI / 4) * MoveArrow.ARROW_SIZE, y - Math.sin(theta + 5 * Math.PI / 4) * MoveArrow.ARROW_SIZE);
+		ctx.stroke();
+
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		ctx.lineTo(x + Math.cos(theta + 3 * Math.PI / 4) * MoveArrow.ARROW_SIZE, y - Math.sin(theta + 3 * Math.PI / 4) * MoveArrow.ARROW_SIZE)
+		ctx.stroke();
+	}
+
 	connectTo(nextArrow) {
 		this.nextArrow = nextArrow;
 		nextArrow.prevArrow = this;
@@ -392,11 +409,7 @@ class MoveArrow {
 		let direction = this.getDirection();
 		let offset = TILE_SIZE / 2;
 
-		let isStartFull = this.#isCellFull(this.startPoint);
-
-		let fullStartCellAdjustment = isStartFull ? offset : MoveArrow.PADDING;
-
-		// place start point in center of tile
+		let fullStartCellAdjustment = this.#isCellFull(this.startPoint) ? offset : MoveArrow.PADDING;
 		let x1 = this.startPoint.x * TILE_SIZE + offset;
 
 		// shrink arrow length if start cell is full
@@ -412,11 +425,7 @@ class MoveArrow {
 		let direction = this.getDirection();
 		let offset = TILE_SIZE / 2;
 
-		let isStartFull = this.#isCellFull(this.startPoint);
-
-		let fullStartCellAdjustment = isStartFull ? offset : MoveArrow.PADDING;
-
-		// place start point in center of tile
+		let fullStartCellAdjustment = this.#isCellFull(this.startPoint) ? offset : MoveArrow.PADDING;
 		let y1 = this.startPoint.y * TILE_SIZE + offset;
 
 		// shrink arrow length if start cell is full
@@ -432,11 +441,7 @@ class MoveArrow {
 		let direction = this.getDirection();
 		let offset = TILE_SIZE / 2;
 
-		let isDestFull = this.#isCellFull(this.endPoint);
-
-		let fullDestCellAdjustment = isDestFull ? offset : MoveArrow.PADDING;
-
-		// place end point in center of tile
+		let fullDestCellAdjustment = this.#isCellFull(this.endPoint) ? offset : MoveArrow.PADDING;
 		let x2 = this.endPoint.x * TILE_SIZE + offset;
 
 		// shrink arrow length if destination cell is full
@@ -452,11 +457,7 @@ class MoveArrow {
 		let direction = this.getDirection();
 		let offset = TILE_SIZE / 2;
 
-		let isDestFull = this.#isCellFull(this.endPoint);
-
-		let fullDestCellAdjustment = isDestFull ? offset : MoveArrow.PADDING;
-
-		// place end point in center of tile
+		let fullDestCellAdjustment = this.#isCellFull(this.endPoint) ? offset : MoveArrow.PADDING;
 		let y2 = this.endPoint.y * TILE_SIZE + offset;
 
 		// shrink arrow length if destination cell is full
@@ -466,23 +467,6 @@ class MoveArrow {
 		y2 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
 
 		return y2;
-	}
-
-	#drawArrowHead(x, y, theta) {
-		let ctx = canvas.getContext("2d");
-
-		ctx.strokeStyle = getColorValueArrow(this.color);
-		ctx.lineWidth = MoveArrow.LINE_THICKNESS;
-
-		ctx.beginPath();
-		ctx.moveTo(x, y);
-		ctx.lineTo(x + Math.cos(theta + 5 * Math.PI / 4) * MoveArrow.ARROW_SIZE, y - Math.sin(theta + 5 * Math.PI / 4) * MoveArrow.ARROW_SIZE);
-		ctx.stroke();
-
-		ctx.beginPath();
-		ctx.moveTo(x, y);
-		ctx.lineTo(x + Math.cos(theta + 3 * Math.PI / 4) * MoveArrow.ARROW_SIZE, y - Math.sin(theta + 3 * Math.PI / 4) * MoveArrow.ARROW_SIZE)
-		ctx.stroke();
 	}
 
 	draw(canvas) {
@@ -496,8 +480,8 @@ class MoveArrow {
 		let y2 = this.getEndY();
 
 		// if the arrow bends, speed up tweening to allow some time to animate tween around the bend
-		let bendTween = 1 / (1 + 1 / this.startPoint.lInfDist(this.endPoint));
-		let adjustedTween = this.nextArrow ? Math.min(1, this.tweenAlpha / bendTween) : this.tweenAlpha
+		let startBend = 1 / (1 + 1 / this.startPoint.lInfDist(this.endPoint));
+		let adjustedTween = this.nextArrow ? Math.min(1, this.tweenAlpha / startBend) : this.tweenAlpha
 
 		// adjust start length for end of a curve
 		if (this.prevArrow) {
@@ -535,15 +519,22 @@ class MoveArrow {
 		ctx.lineTo(x2, y2);
 		ctx.stroke();
 
-		 if (this.nextArrow && this.tweenAlpha > bendTween) {
+		// draw bend in arrow
+		if (this.nextArrow && this.tweenAlpha > startBend) {
 			let x3 = this.nextArrow.getStartX();
 			let y3 = this.nextArrow.getStartY();
-			let r = Math.min(Math.abs(x2-x3), Math.abs(y2-y3));
+			let nextDirection = this.nextArrow.getDirection();
 
-			let tweenAdjustment = (this.tweenAlpha - bendTween) / (1 - bendTween)
-			let ccw = (direction === (this.nextArrow.getDirection() + 1) % 4);
-			let thetaStart = (Math.PI / 2)  + (Math.PI / 2) * direction + (ccw ? Math.PI : 0);
-			let thetaEnd =  ccw ? thetaStart - Math.PI / 2 * tweenAdjustment : thetaStart + Math.PI / 2 * tweenAdjustment;
+			let r = Math.min(Math.abs(x2-x3), Math.abs(y2-y3));
+			let ccw = (Direction.rotate90(direction, -1) == nextDirection);
+
+			let dTheta = (this.tweenAlpha - startBend) / (1 - startBend) * Math.PI / 2;
+			let thetaStart = -1 * Direction.toRadians(direction) - Math.PI / 2 * (ccw ? -1 : 1);
+			let thetaEnd = thetaStart + dTheta * (ccw ? -1 : 1);
+
+			// adjust coordinates of next arrow's start point
+			x3 = x3 + (Math.abs(x2 - x3) - r) * (nextDirection % 2 - 1) * (nextDirection - 1);
+			y3 = y3 - (Math.abs(y2 - y3) - r) * (nextDirection % 2) * (nextDirection - 2);
 
 			let cx, cy;
 			if(direction == Direction.Right || direction == Direction.Left)
@@ -555,21 +546,18 @@ class MoveArrow {
 				cy = y2;
 			}
 
-			cx = cx + (r - Math.abs(x3 - x2)) * (x2 > x3 ? 1 : -1);
-			cy = cy + (r - Math.abs(y3 - y2)) * (y2 > y3 ? 1 : -1);
-
 			ctx.beginPath();
 			ctx.arc(cx, cy, r, thetaStart, thetaEnd, ccw);
 			ctx.stroke();
 
-			let arrowAngle = -1 * thetaEnd + Math.PI / 2 * (ccw ? -1 : 1) + Math.PI;
-
 			if(this.tweenAlpha < 1.0)
 			{
+				let arrowAngle = -1 * thetaEnd + Math.PI / 2 * (ccw ? -1 : 1) + Math.PI;
 				this.#drawArrowHead(cx + Math.cos(thetaEnd) * r, cy + Math.sin(thetaEnd) * r, arrowAngle);
 			}
+
 		 } else {
-			 this.#drawArrowHead(x2, y2, Direction.toRadian(direction));
+			 this.#drawArrowHead(x2, y2, Direction.toRadians(direction));
 		 }
 	}
 
@@ -596,7 +584,7 @@ function drawGame(game, canvas, offset = new Point(0, 0)) {
 	for (let i = 0; i < robots.length; ++i) {
 		robots[i].draw(canvas, offset);
 	}
-	
+
 	if (selection.hasSelection()) {
 		let ctx = canvas.getContext("2d");
 		ctx.fillStyle = robots[selection.selectedRobot].getColorValue();
@@ -604,7 +592,7 @@ function drawGame(game, canvas, offset = new Point(0, 0)) {
 		let current = robots[selection.selectedRobot].getCell();
 		let currentDraw = current.mul(TILE_SIZE).add(offset);
 		ctx.fillRect(currentDraw.x, currentDraw.y, TILE_SIZE, TILE_SIZE);
-	
+
 		for (let dir = 0; dir < 4; ++dir) {
 			current = robots[selection.selectedRobot].getCell();
 			for (let segment = 1; segment < selection.directionMoves[dir].length; ++segment) {
@@ -616,7 +604,7 @@ function drawGame(game, canvas, offset = new Point(0, 0)) {
 					current = current.add(delta);
 					currentDraw = current.mul(TILE_SIZE).add(offset);
 					ctx.fillRect(currentDraw.x, currentDraw.y, TILE_SIZE, TILE_SIZE);
-					
+
 					if (current.x < 0 || current.y < 0 || current.x >= game.board.size.x || current.y >= game.board.size.y) {
 						selection.setRobot(selection.selectedRobot);
 						break;
@@ -626,7 +614,7 @@ function drawGame(game, canvas, offset = new Point(0, 0)) {
 		}
 		ctx.globalAlpha = 1.0;
 	}
-	
+
 	if (game.currentGoal != null) {
 		drawGoal(game.currentGoal, canvas, game.board.size.mul(TILE_SIZE / 2.0).sub(TILE_SIZE / 2.0, TILE_SIZE / 2.0));
 	}
@@ -640,15 +628,15 @@ function updateUI() {
 	}
 
 	let hideStates = State.allValues.filter(s => s != game.state).map(s => "." + State.str(s).toLowerCase());
-	
+
 	if (!isClientSolving()) {
 		hideStates.push('.solving');
 	}
-	
+
 	$(hideStates.join(', ')).hide();
 	let showState = State.str(game.state).toLowerCase()
 	$('.' + showState).show();
-	
+
 	if (playerId == null) {
 		$('.playing').hide();
 	} else {
@@ -672,20 +660,20 @@ function updateUI() {
 	} else {
 		timer.textContent = "";
 	}
-	
+
 	let numMoves = document.getElementById('num_moves');
 	if (game.state == State.Solve && numMoves != null && moveCount != null) {
 		numMoves.textContent = moveCount.toString();
 	}
-	
-	if (playerId != null) {	
+
+	if (playerId != null) {
 		revertButton.disabled = !(isClientSolving() && hasUndo());
 		undoButton.disabled = !(isClientSolving() && hasUndo());
 		redoButton.disabled = !(isClientSolving() && hasRedo());
-		
+
 		bidInput.disabled = !canEnterBid();
 		bidButton.disabled = !canBid();
-		
+
 		let currentBid = game.getBid(playerId);
 		let currBidElement = document.getElementById('curr_bid');
 		if (currentBid != null) {
@@ -693,9 +681,9 @@ function updateUI() {
 		} else {
 			currBidElement.textContent = "";
 		}
-		
+
 		let player = game.getPlayer(playerId);
-		
+
 		gentlemanButton.disabled = player.vote == 'SKIPBID';
 		nextRoundButton.disabled = player.vote == 'NEXT';
 		waitRoundButton.disabled = player.vote == 'WAIT';
@@ -708,11 +696,11 @@ function updateUI() {
 			resetRobotsButton.disabled = false;
 			showDemoButton.innerText = 'Show Demo';
 		}
-		
+
 		document.getElementById('name').textContent = "" + player.name;
 		document.getElementById('score').textContent = "" + player.getScore();
 	}
-	
+
 	let namingDisabled = !canRename();
 	joinButton.disabled = namingDisabled;
 	renameButton.disabled = namingDisabled;
@@ -902,7 +890,7 @@ function revertMoves() {
 	}
 	clearMoveArrows();
 	updateUI();
-	
+
 	if (socket != null) {
 		socket.send('RESET_ROBOTS');
 	}
@@ -979,10 +967,10 @@ function moveRobotInDirection(robotId, direction, addArrows = true, arrowMoveInd
 canvas.addEventListener('click', function(evt) {
 	let mousePos = getMousePos(canvas, evt);
 	let cellPos = getCellFromPos(mousePos);
-	
+
 	let didAction = false;
 	let isFree = isAnyOf(game.state, State.Free, State.End);
-	
+
 	if (canDoMoves()) {
 		if (selection.hasSelection()) {
 			if (!robots[selection.selectedRobot].getCell().equals(cellPos)) {
@@ -1005,7 +993,7 @@ canvas.addEventListener('click', function(evt) {
 				}
 			}
 		}
-		
+
 		if (!didAction) {
 			selection.clearSelection();
 			for (let i = 0; i < robots.length; ++i) {
@@ -1023,17 +1011,17 @@ window.addEventListener("keydown", function(event) {
 	if (event.defaultPrevented) {
 		return;
 	}
-	
+
 	if (isClientSolving()) {
 		if (event.key == "z" && event.ctrlKey) {
 			undoMove();
 		}
-		
+
 		if (event.key == "y" && event.ctrlKey) {
 			redoMove();
 		}
 	}
-	
+
 	if (canDoMoves()) {
 		if (event.key >= '1' && event.key <= '9') {
 			let id = parseInt(event.key) - 1;
@@ -1041,7 +1029,7 @@ window.addEventListener("keydown", function(event) {
 				selection.setRobot(id);
 			}
 		}
-	
+
 		if (selection.hasSelection()) {
 			if (event.key == "ArrowRight" || event.key == 'd') {
 				doDirectionMove(Direction.Right);
@@ -1060,7 +1048,7 @@ window.addEventListener("keydown", function(event) {
 			}
 		}
 	}
-	
+
 	//event.preventDefault();
 }, true);
 
@@ -1086,7 +1074,7 @@ function loop(timestamp) {
 	for (let i = 0; i < robots.length; ++i) {
 		robots[i].update(deltaTime);
 	}
-	
+
 	updateUI();
 
 	drawGame(game, canvas);
@@ -1095,7 +1083,7 @@ function loop(timestamp) {
 		let didTween = false;
 		for(let i in arrowSequence) {
 			arrowSequence[i].draw(canvas);
-			
+
 			if (arrowSequence[i].tweenAlpha < 1.0) {
 				arrowSequence[i].update(deltaTime);
 				break;
@@ -1108,11 +1096,11 @@ function loop(timestamp) {
 
 function onServerMessageReceived(data) {
 	let lines = data.split('\n');
-	
+
 	if (lines.length <= 0) {
 		return;
 	}
-	
+
 	for (let i = 0; i < lines.length; ++i) {
 		let [command, ...args] = lines[i].split(' ');
 		command = command.toUpperCase();
@@ -1204,7 +1192,7 @@ function processTimeSync(args) {
 	let serverTime = parseInt(args[1]);
 	let halfRtt = roundTripTime / 2;
 	let serverTimeNow = serverTime + halfRtt;
-	
+
 	serverTimeDelta = serverTimeNow - timeNow;
 
 	console.log(`Server Time Delta = ${serverTimeDelta}`);
@@ -1252,9 +1240,9 @@ function processNewBoard(args) {
 	if (args.length > 2) {
 		tokensToWin = parseInt(args[2]);
 	}
-	
+
 	game.resetGame(numRobots, boardSeed, tokensToWin);
-	
+
 	robots = [];
 	for (let i = 0; i < game.robots.length; ++i) {
 		robots.push(new Robot(game, game.robots[i], i));
@@ -1418,7 +1406,7 @@ function processRobotMove(args) {
 		isUndo = oldMoveCount > moveCount;
 		filterArrowSequence(moveCount);
 	}
-	
+
 	let moveList = [];
 
 	for (let i = 2; i < args.length; i += 2) {
@@ -1428,7 +1416,7 @@ function processRobotMove(args) {
 
 	if (moveList.length > 0) {
 		cachedRobotPositions[robotId] = moveList[moveList.length - 1];
-	}	
+	}
 
 	if (!isViewingDemo() && moveList.length > 0 && !moveList[moveList.length - 1].equals(robots[robotId].getCell())) {
 		let lastPos = robots[robotId].getCell();
@@ -1555,11 +1543,11 @@ window.onload = function() {
 	let isSecure = protocol == 'https';
 	let wsTarget = (isSecure ? 'wss' : 'ws') + targetServer.slice(protocolPoint);
 	console.log(wsTarget)
-	
+
 	for (let i = 0; i < game.robots.length; ++i) {
 		robots.push(new Robot(game, game.robots[i], i));
 	}
-	
+
 	socket = new WebSocket(wsTarget);
 
 	socket.onopen = function(event) {
