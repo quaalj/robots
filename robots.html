@@ -416,7 +416,7 @@ class MoveArrow {
 		x1 = x1 - (fullStartCellAdjustment) * (direction % 2 - 1) * (direction - 1);
 
 		// displace arrow to the side if cells in the arrow's path already contain arrows
-		x1 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+		x1 += MoveArrow.DODGE_WIDTH * Math.floor((this.dodge + 1) / 2) * (direction % 2) * ((this.dodge % 2) ? -1 : 1);
 
 		return x1;
 	}
@@ -432,7 +432,7 @@ class MoveArrow {
 		y1 = y1 + (fullStartCellAdjustment) * (direction % 2) * (direction - 2);
 
 		// displace arrow to the side if cells in the arrow's path already contain arrows
-		y1 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+		y1 += MoveArrow.DODGE_WIDTH * Math.floor((this.dodge + 1) / 2) * (direction % 2 - 1) * ((this.dodge % 2) ? -1 : 1);
 
 		return y1;
 	}
@@ -448,7 +448,7 @@ class MoveArrow {
 		x2 = x2 + (fullDestCellAdjustment) * (direction % 2 - 1) * (direction - 1);
 
 		// displace arrow to the side if cells in the arrow's path already contain arrows
-		x2 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2) * (direction - 2);
+		x2 += MoveArrow.DODGE_WIDTH * Math.floor((this.dodge + 1) / 2) * (direction % 2) * ((this.dodge % 2) ? -1 : 1);
 
 		return x2;
 	}
@@ -464,7 +464,7 @@ class MoveArrow {
 		y2 = y2 - (fullDestCellAdjustment) * (direction % 2) * (direction - 2);
 
 		// displace arrow to the side if cells in the arrow's path already contain arrows
-		y2 += MoveArrow.DODGE_WIDTH * this.dodge * (direction % 2 - 1) * (direction - 1);
+		y2 += MoveArrow.DODGE_WIDTH * Math.floor((this.dodge + 1) / 2) * (direction % 2 - 1) * ((this.dodge % 2) ? -1 : 1);
 
 		return y2;
 	}
