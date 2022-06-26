@@ -191,6 +191,9 @@ export const Direction = makeEnum(['Left', 'Up', 'Right', 'Down'], {
 			}
 		}
 		return null;
+	},
+	toRadian: function(direction) {
+		return -1 * Math.PI / 2 * direction + Math.PI;
 	}
 });
 

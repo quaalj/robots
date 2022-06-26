@@ -468,6 +468,23 @@ class MoveArrow {
 		return y2;
 	}
 
+	#drawArrowHead(x, y, theta) {
+		let ctx = canvas.getContext("2d");
+
+		ctx.strokeStyle = getColorValueArrow(this.color);
+		ctx.lineWidth = MoveArrow.LINE_THICKNESS;
+
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		ctx.lineTo(x + Math.cos(theta + 5 * Math.PI / 4) * MoveArrow.ARROW_SIZE, y - Math.sin(theta + 5 * Math.PI / 4) * MoveArrow.ARROW_SIZE);
+		ctx.stroke();
+
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		ctx.lineTo(x + Math.cos(theta + 3 * Math.PI / 4) * MoveArrow.ARROW_SIZE, y - Math.sin(theta + 3 * Math.PI / 4) * MoveArrow.ARROW_SIZE)
+		ctx.stroke();
+	}
+
 	draw(canvas) {
 		let ctx = canvas.getContext("2d");
 		let direction = this.getDirection();
@@ -509,8 +526,6 @@ class MoveArrow {
 			y2 = y1 + (y2 - y1) * adjustedTween;
 		}
 
-		let arrowAngle = -1 * Math.PI / 2 * direction;
-
 		ctx.strokeStyle = getColorValueArrow(this.color);
 		ctx.lineWidth = MoveArrow.LINE_THICKNESS;
 
@@ -546,21 +561,16 @@ class MoveArrow {
 			ctx.beginPath();
 			ctx.arc(cx, cy, r, thetaStart, thetaEnd, ccw);
 			ctx.stroke();
-		}
 
-		// arrow head or bend
-		if(!this.nextArrow)
-		{
-			ctx.beginPath();
-			ctx.moveTo(x2, y2);
-			ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * MoveArrow.ARROW_SIZE, y2 - Math.sin(arrowAngle + Math.PI / 4) * MoveArrow.ARROW_SIZE);
-			ctx.stroke();
+			let arrowAngle = -1 * thetaEnd + Math.PI / 2 * (ccw ? -1 : 1) + Math.PI;
 
-			ctx.beginPath();
-			ctx.moveTo(x2, y2);
-			ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE)
-			ctx.stroke();
-		}
+			if(this.tweenAlpha < 1.0)
+			{
+				this.#drawArrowHead(cx + Math.cos(thetaEnd) * r, cy + Math.sin(thetaEnd) * r, arrowAngle);
+			}
+		 } else {
+			 this.#drawArrowHead(x2, y2, Direction.toRadian(direction));
+		 }
 	}
 
 	cancelTween() {
