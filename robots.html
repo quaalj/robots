@@ -478,11 +478,11 @@ class MoveArrow {
 		let x2 = this.getEndX();
 		let y2 = this.getEndY();
 
-		let bendTween;
-		if (this.nextArrow){
-			bendTween = 1 / (this.startPoint.lInfDist(this.endPoint) + 1) / (this.startPoint.lInfDist(this.endPoint));
-		}
+		// if the arrow bends, speed up tweening to allow some time to animate tween around the bend
+		let bendTween = 1 / (1 + 1 / this.startPoint.lInfDist(this.endPoint));
+		let adjustedTween = this.nextArrow ? Math.min(1, this.tweenAlpha / bendTween) : this.tweenAlpha
 
+		// adjust start length for end of a curve
 		if (this.prevArrow) {
 			let x3 = this.prevArrow.getEndX();
 			let y3 = this.prevArrow.getEndY();
@@ -492,6 +492,7 @@ class MoveArrow {
 			y1 = y1 - (Math.abs(y3 - y1) - r) * (direction % 2) * (direction - 2);
 		}
 
+		// adjust end length for start of a curve
 		if (this.nextArrow) {
 			let x3 = this.nextArrow.getStartX();
 			let y3 = this.nextArrow.getStartY();
@@ -503,9 +504,9 @@ class MoveArrow {
 
 		// for some nice arrow tweening
 		if(direction == Direction.Left || direction == Direction.Right) {
-			x2 = x1 + (x2 - x1) * this.tweenAlpha;
+			x2 = x1 + (x2 - x1) * adjustedTween;
 		} else {
-			y2 = y1 + (y2 - y1) * this.tweenAlpha;
+			y2 = y1 + (y2 - y1) * adjustedTween;
 		}
 
 		let arrowAngle = -1 * Math.PI / 2 * direction;
@@ -519,30 +520,17 @@ class MoveArrow {
 		ctx.lineTo(x2, y2);
 		ctx.stroke();
 
-		// arrow head or bend
-		if(!this.nextArrow)
-		{
-			ctx.beginPath();
-			ctx.moveTo(x2, y2);
-			ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * MoveArrow.ARROW_SIZE, y2 - Math.sin(arrowAngle + Math.PI / 4) * MoveArrow.ARROW_SIZE);
-			ctx.stroke();
-
-			ctx.beginPath();
-			ctx.moveTo(x2, y2);
-			ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE)
-			ctx.stroke();
-
-		} else if (this.tweenAlpha == 1.0) {
+		 if (this.nextArrow && this.tweenAlpha > bendTween) {
 			let x3 = this.nextArrow.getStartX();
 			let y3 = this.nextArrow.getStartY();
 			let r = Math.min(Math.abs(x2-x3), Math.abs(y2-y3));
 
+			let tweenAdjustment = (this.tweenAlpha - bendTween) / (1 - bendTween)
 			let ccw = (direction === (this.nextArrow.getDirection() + 1) % 4);
 			let thetaStart = (Math.PI / 2)  + (Math.PI / 2) * direction + (ccw ? Math.PI : 0);
-			let thetaEnd =  ccw ? thetaStart - Math.PI / 2 : thetaStart + Math.PI / 2;
+			let thetaEnd =  ccw ? thetaStart - Math.PI / 2 * tweenAdjustment : thetaStart + Math.PI / 2 * tweenAdjustment;
 
 			let cx, cy;
-
 			if(direction == Direction.Right || direction == Direction.Left)
 			{
 				cx = x2;
@@ -557,6 +545,20 @@ class MoveArrow {
 
 			ctx.beginPath();
 			ctx.arc(cx, cy, r, thetaStart, thetaEnd, ccw);
+			ctx.stroke();
+		}
+
+		// arrow head or bend
+		if(!this.nextArrow)
+		{
+			ctx.beginPath();
+			ctx.moveTo(x2, y2);
+			ctx.lineTo(x2 + Math.cos(arrowAngle + Math.PI / 4) * MoveArrow.ARROW_SIZE, y2 - Math.sin(arrowAngle + Math.PI / 4) * MoveArrow.ARROW_SIZE);
+			ctx.stroke();
+
+			ctx.beginPath();
+			ctx.moveTo(x2, y2);
+			ctx.lineTo(x2 + Math.cos(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE, y2 - Math.sin(arrowAngle - Math.PI / 4) * MoveArrow.ARROW_SIZE)
 			ctx.stroke();
 		}
 	}
