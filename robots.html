@@ -1,3 +1,4 @@
+<!--suppress EqualityComparisonWithCoercionJS -->
 <html>
 
 <style>
@@ -280,6 +281,7 @@ class MoveArrow {
 		this.game = game;
 		this.tweenAlpha = 0;
 		this.nextArrow = null;
+		this.prevArrow = null;
 
 		this.updateCellCount();
 		this.dodge = this.findMaxLineCount() - 1;
@@ -327,6 +329,7 @@ class MoveArrow {
 
 	connectTo(nextArrow) {
 		this.nextArrow = nextArrow;
+		nextArrow.prevArrow = this;
 	}
 
 	getDirection() {
@@ -468,13 +471,35 @@ class MoveArrow {
 	draw(canvas) {
 		let ctx = canvas.getContext("2d");
 		let direction = this.getDirection();
-		let offset = TILE_SIZE / 2;
 
 		// place start and end points in center of tile
 		let x1 = this.getStartX();
 		let y1 = this.getStartY();
 		let x2 = this.getEndX();
 		let y2 = this.getEndY();
+
+		let bendTween;
+		if (this.nextArrow){
+			bendTween = 1 / (this.startPoint.lInfDist(this.endPoint) + 1) / (this.startPoint.lInfDist(this.endPoint));
+		}
+
+		if (this.prevArrow) {
+			let x3 = this.prevArrow.getEndX();
+			let y3 = this.prevArrow.getEndY();
+			let r = Math.min(Math.abs(x1-x3), Math.abs(y1-y3));
+
+			x1 = x1 + (Math.abs(x3 - x1) - r) * (direction % 2 - 1) * (direction - 1);
+			y1 = y1 - (Math.abs(y3 - y1) - r) * (direction % 2) * (direction - 2);
+		}
+
+		if (this.nextArrow) {
+			let x3 = this.nextArrow.getStartX();
+			let y3 = this.nextArrow.getStartY();
+			let r = Math.min(Math.abs(x2-x3), Math.abs(y2-y3));
+
+			x2 = x2 - (Math.abs(x3 - x2) - r) * (direction % 2 - 1) * (direction - 1);
+			y2 = y2 + (Math.abs(y3 - y2) - r) * (direction % 2) * (direction - 2);
+		}
 
 		// for some nice arrow tweening
 		if(direction == Direction.Left || direction == Direction.Right) {
@@ -494,7 +519,7 @@ class MoveArrow {
 		ctx.lineTo(x2, y2);
 		ctx.stroke();
 
-		// arrow head
+		// arrow head or bend
 		if(!this.nextArrow)
 		{
 			ctx.beginPath();
@@ -512,11 +537,12 @@ class MoveArrow {
 			let y3 = this.nextArrow.getStartY();
 			let r = Math.min(Math.abs(x2-x3), Math.abs(y2-y3));
 
-			let ccw = direction === (this.nextArrow.getDirection() + 1) % 4;
+			let ccw = (direction === (this.nextArrow.getDirection() + 1) % 4);
 			let thetaStart = (Math.PI / 2)  + (Math.PI / 2) * direction + (ccw ? Math.PI : 0);
 			let thetaEnd =  ccw ? thetaStart - Math.PI / 2 : thetaStart + Math.PI / 2;
 
 			let cx, cy;
+
 			if(direction == Direction.Right || direction == Direction.Left)
 			{
 				cx = x2;
@@ -525,6 +551,10 @@ class MoveArrow {
 				cx = x3;
 				cy = y2;
 			}
+
+			cx = cx + (r - Math.abs(x3 - x2)) * (x2 > x3 ? 1 : -1);
+			cy = cy + (r - Math.abs(y3 - y2)) * (y2 > y3 ? 1 : -1);
+
 			ctx.beginPath();
 			ctx.arc(cx, cy, r, thetaStart, thetaEnd, ccw);
 			ctx.stroke();
