@@ -501,7 +501,7 @@ export class RobotsGameInstance {
 				if (cell != null && !cell.fullyFenced() && cell.bumper == null) {
 					this.game.robots[robotId] = pos;
 					let commands = [this.makeRobotMoveCommand(robotId)];
-					sendAll(commands.join('\n'));
+					this.sendAll(commands.join('\n'));
 				} else {
 					client.socket.send(this.makeRobotMoveCommand(robotId))
 				}

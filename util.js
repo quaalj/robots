@@ -121,6 +121,15 @@ export function isupper(c) {
 	return c == c.toUpperCase();
 }
 
+export function toIntegerEnumeration(x) {
+	let result = Math.floor((x + 1) / 2);
+
+	if(!(x % 2)) {
+		result = -1 * result;
+	}
+
+	return result;
+}
 export function makeEnum(values, functions = {}) {
 	let dict = functions;
 	let allValues = [];
@@ -191,6 +200,9 @@ export const Direction = makeEnum(['Left', 'Up', 'Right', 'Down'], {
 			}
 		}
 		return null;
+	},
+	toRadians: function(direction) {
+		return -1 * Math.PI / 2 * direction + Math.PI;
 	}
 });
 
