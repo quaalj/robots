@@ -822,6 +822,11 @@ function getCurrentBidInputValue() {
 	let bidText = bidInput.value;
 	if (bidText.length > 0) {
 		let asInt = parseInt(bidText);
+
+		if (asInt > Number.MAX_SAFE_INTEGER) {
+			asInt = 0;
+		}
+
 		return asInt;
 	}
 	return 0;
