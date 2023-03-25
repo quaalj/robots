@@ -4,7 +4,7 @@ import { isupper, intdiv, Direction, Point, makeEnum, arrayRemove, Mulberry32, a
 
 export const Symbol = makeEnum(["Star", "Moon", "Gear", "Saturn", "Warp"]);
 export const Color = makeEnum(["Yellow", "Green", "Red", "Blue"]);
-export const State = makeEnum(['Start', 'Bid', 'Solve', 'Free', 'End']);
+export const State = makeEnum(['Start', 'Bid', 'Solve', 'Free', 'End', 'Wait']);
 
 export class Goal {
 	constructor(color = null, symbol = null) {
@@ -1066,6 +1066,7 @@ export class Game {
 		this.solveTimeout = 30.0;
 		this.nextRoundTimeout = 10.0;
 		this.nextRoundTimeoutMode = TimeoutMode.FirstVote;
+		this.revealTimeout = 5.0;
 		this.earlyOut = 3;
 		this.serverTimeOffset = 123456;
 		
@@ -1355,14 +1356,16 @@ export class Game {
 		return this.getWinners() != null;
 	}
 
-	startBidState() {
+	startWaitState() {
 		this.clearVotes();
 		if (!this.isGameOver()) {
-			this.state = State.Bid;
+			this.state = State.Wait;
+			this.timerStartTime = Date.now() + this.serverTimeOffset;
+
 			let targetGoalIdx = Math.floor(this.rand.randFloat() * this.goalsRemaining.length);
 			this.currentGoal = this.goalsRemaining[targetGoalIdx];
 			let valid = false;
-			
+
 			while (!valid) {
 				this.rearrangeRobots();
 				// check if there are solutions that are less than 'earlyOut' and disallow them
@@ -1374,13 +1377,17 @@ export class Game {
 				}
 			}
 
-			this.timerStartTime = null;
 			this.currentSolveBid = null;
 			this.resetBids();
 			this.originalRobotConfig = this.getRobotPositions();
 		} else if (this.state != State.End) {
 			this.startFreeState();
 		}
+	}
+
+	startBidState() {
+		this.state = State.Bid;
+		this.timerStartTime = null;
 	}
 	
 	startSolveState() {
@@ -1439,7 +1446,7 @@ export class Game {
 		this.currentSolveBid = null;
 		this.playerBids = [];
 	}
-	
+
 	canAutoStartSolve() {
 		if (this.playerBids.length == this.players.size) {
 			if (this.allowMultipleBids) {

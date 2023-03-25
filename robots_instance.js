@@ -28,7 +28,8 @@ export class RobotsGameInstance {
 
 	initializeGame(params) {
 		this.game.resetGame(4, Math.random() * 2000000000);
-		this.game.startBidState();
+		this.game.startWaitState();
+		this.currentTimerId = setTimeout(() => this.startRound(), Math.floor(this.game.revealTimeout * 1000));
 
 		//ToDo: When game resets after winner, need to call workOnSolution
 		this.workOnSolution();
@@ -97,7 +98,7 @@ export class RobotsGameInstance {
 	
 	makeGameStateCommand() {
 		let command = `SET_STATE ${this.game.state}`;
-		if (this.game.currentGoal != null) {
+		if (this.game.currentGoal != null && this.game.state !== State.Wait) {
 			command += ` ${this.game.currentGoal.toInt()}`;
 		} else {
 			command += ` -1`
@@ -368,14 +369,25 @@ export class RobotsGameInstance {
 	}
 	
 	nextRound() {
-		this.game.startBidState();
-		let commands = [this.makeGameStateCommand(this.game.state), this.makeRobotResetCommand()]
-		this.sendAll(commands.join('\n'));
+		this.game.startWaitState();
 	
 		this.clearTimer();
 		this.endSolution();
 		this.workOnSolution();
 		this.readyNextRound = false;
+
+		this.currentTimerId = setTimeout(() => this.startRound(), Math.floor(this.game.revealTimeout * 1000));
+		let commands = [this.makeGameStateCommand(this.game.state), this.makeRobotResetCommand(), this.makeStartTimerCommand()];
+		this.sendAll(commands.join('\n'));
+	}
+
+	startRound() {
+		this.game.startBidState();
+
+		let command = this.makeGameStateCommand(this.game.state);
+		this.sendAll(command);
+
+		this.clearTimer();
 	}
 	
 	startNextRoundTimer() {

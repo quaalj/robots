@@ -97,10 +97,6 @@ import { TILE_SIZE, getMousePos, getCellFromPos, clearCanvas, getSymbolImage, ge
 const ROBOT_TWEEN_SPEED = 32.0;
 const TIME_SYNC_INTERVAL = 1000 * 60 * 5; // Once every few minutes?
 
-// length of shortest path is sent by message from server
-// don't want people cheating...
-const QUIET_MODE = false;
-
 const MAX_SOLVE_BUFFER = 5;
 const MAX_FREE_BUFFER = 2;
 
@@ -232,6 +228,83 @@ class Robot {
 	}
 }
 
+class SandTimer {
+	static COLOR = "#DD1111";
+	static LINE_THICKNESS = 5.0;
+
+	constructor(x1, x2, y1, y2) {
+		this.x1 = Math.min(x1, x2);
+		this.x2 = Math.max(x1, x2);
+		this.y1 = Math.min(y1, y2);
+		this.y2 = Math.max(y1, y2);
+
+		this.tweenAlpha = 0.0;
+		this.onTimeUp = null;
+	}
+
+	draw(canvas) {
+		let ctx = canvas.getContext("2d");
+
+		let hLength = Math.abs(this.x2 - this.x1);
+		let vLength = Math.abs(this.y2 - this.y1);
+		let perimeterLength = 2 * hLength + 2 * vLength;
+
+		let hProp = hLength / perimeterLength;
+		let vProp = vLength / perimeterLength;
+
+		ctx.strokeStyle = SandTimer.COLOR;
+		ctx.lineWidth = SandTimer.LINE_THICKNESS;
+		ctx.lineCap = "square";
+
+		// draw left side
+		if(this.tweenAlpha > vProp + 2 * hProp) {
+			ctx.beginPath();
+			ctx.moveTo(this.x1, this.y1  + vLength * (1 - (this.tweenAlpha - (vProp + 2 * hProp)) / vProp));
+			ctx.lineTo(this.x1, this.y2);
+			ctx.stroke();
+		}
+
+		// draw bottom side
+		if(this.tweenAlpha > vProp + hProp) {
+			ctx.beginPath();
+			ctx.moveTo(this.x1 + hLength * (1 - (Math.min(this.tweenAlpha, vProp + 2 * hProp) - (vProp + hProp)) / hProp), this.y2);
+			ctx.lineTo(this.x2, this.y2);
+			ctx.stroke();
+		}
+
+		// draw right side
+		if(this.tweenAlpha > hProp) {
+			ctx.beginPath();
+			ctx.moveTo(this.x2, this.y1 + vLength * (Math.min(this.tweenAlpha, vProp + hProp) - vProp) / vProp);
+			ctx.lineTo(this.x2, this.y1);
+			ctx.stroke();
+		}
+
+		// draw top side
+		if(this.tweenAlpha > 0) {
+			ctx.beginPath();
+			ctx.moveTo(this.x1 + hLength * (Math.min(this.tweenAlpha, hProp) / hProp), this.y1);
+			ctx.lineTo(this.x1, this.y1);
+			ctx.stroke();
+		}
+
+		ctx.lineCap = "butt";
+	}
+
+	update(currTime, totalTime) {
+		this.tweenAlpha =  currTime / totalTime;
+	}
+
+	setOnTimeUp(onTimeUp) {
+		this.setOnTimeUp = onTimeUp;
+	}
+
+	cancel() {
+		this.tweenAlpha = 0.0;
+		this.timeLeft = 0;
+	}
+}
+
 // Globals
 let game = new Game();
 let robots = [];
@@ -248,6 +321,7 @@ let demoSequence = null;
 let cachedRobotPositions = [];
 
 let arrowSequence = [];
+let activeTimer = new SandTimer(0, game.board.width * TILE_SIZE, 0, game.board.height * TILE_SIZE);
 
 let playerId = null;
 let currentSolvingPlayer = null;
@@ -666,13 +740,20 @@ function updateUI() {
 		if (game.state == State.Bid) {
 			let bidTimeLeft = Math.max((game.bidTimeout * 1000) - serverTimerElapsed, 0);
 			timer.textContent = epochDeltaToTime(bidTimeLeft);
+			activeTimer.update(bidTimeLeft, game.bidTimeout * 1000);
 		} else if (game.state == State.Solve) {
 			let solveTimeLeft = Math.max((game.solveTimeout * 1000) - serverTimerElapsed, 0);
 			timer.textContent = epochDeltaToTime(solveTimeLeft);
+			activeTimer.update(solveTimeLeft, game.solveTimeout * 1000);
 		} else if (game.state == State.Free) {
 			let nextRoundTimeLeft = Math.max((game.nextRoundTimeout * 1000) - serverTimerElapsed, 0);
 			timer.textContent = epochDeltaToTime(nextRoundTimeLeft);
+		} else if (game.state == State.Wait) {
+			let revealTimeLeft = Math.max((game.revealTimeout * 1000) - serverTimerElapsed, 0);
+			timer.textContent = epochDeltaToTime(revealTimeLeft);
+			activeTimer.update(revealTimeLeft, game.revealTimeout * 1000);
 		}
+
 	} else {
 		timer.textContent = "";
 	}
@@ -1112,6 +1193,10 @@ function loop(timestamp) {
 		}
 	}
 
+	if (activeTimer.tweenAlpha > 0) {
+		activeTimer.draw(canvas);
+	}
+
 	window.requestAnimationFrame(loop);
 }
 
@@ -1130,10 +1215,7 @@ function onServerMessageReceived(data) {
 }
 
 function doServerCommand(command, args) {
-	if(!QUIET_MODE)
-	{
-		console.log(`${command} ${args}`);
-	}
+	console.log(`${command} ${args}`);
 
 	if (command == 'GIVE_TOKENS') {
 		processGiveTokens(args);
@@ -1207,6 +1289,7 @@ function processStartTimer(args) {
 
 function processCancelTimer(args) {
 	serverStartTime = null;
+	activeTimer.cancel();
 }
 
 function processTimeSync(args) {
@@ -1292,16 +1375,17 @@ function processSetState(args) {
 	$(`.player_vote`).text('');
 
 	if (args.length > 1) {
-		if (isAnyOf(game.state, State.Bid, State.Solve, State.Free)) {
-			game.currentGoal = Goal.fromInt(parseInt(args[1]));
+		if (isAnyOf(game.state, State.Bid, State.Solve, State.Free, State.Wait)) {
+			if(args[1] != -1) {
+				game.currentGoal = Goal.fromInt(parseInt(args[1]));
+			} else {
+				game.currentGoal = null;
+			}
 			moveCount = 0;
 		}
 	}
+
 	if (game.state == State.Bid) {
-		game.resetBids();
-		$('.player_bid').text('');
-		demoAvailable = false;
-		demoSequence = null;
 		pendingFocusElement = bidInput;
 	}
 
@@ -1317,6 +1401,13 @@ function processSetState(args) {
 		}
 	}
 
+	if (game.state == State.Wait) {
+		game.resetBids();
+		$('.player_bid').text('');
+		demoAvailable = false;
+		demoSequence = null;
+	}
+
 	cancelDemo();
 	selection.clearSelection();
 	serverStartTime = null;
@@ -1325,6 +1416,7 @@ function processSetState(args) {
 	redoStack = []
 	moveCount = null;
 	showDemoButton.style.backgroundColor = '';
+	activeTimer.cancel()
 }
 
 function processAssignPlayer(args) {
@@ -1590,10 +1682,7 @@ window.onload = function() {
 	}
 
 	socket.onmessage = function(event) {
-		if(!QUIET_MODE)
-		{
-			console.log(`Message = ${event.data}`);
-		}
+		console.log(`Message = ${event.data}`);
 		onServerMessageReceived(event.data);
 	};
 
