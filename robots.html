@@ -1175,7 +1175,9 @@ function doServerCommand(command, args) {
 	} else if (command == 'PLAYER_VOTE') {
 		processPlayerVote(args);
 	} else if (command == 'DEMO_READY') {
-		demoAvailable = true;
+		processDemoReady(args)
+	} else if (command == 'DEMO_ALERT') {
+		processDemoAlert(args)
 	} else if (command == 'FINAL_POSITION') {
 		processFinalPosition(args);
 	}
@@ -1230,6 +1232,16 @@ function processGiveTokens(args) {
 
 	$(`#${makePlayerNodeId(targetPlayerId)} > .player_score`).text(`Score: ${player.tokens.length}`);
 	updateTokenCount();
+}
+
+function processDemoReady(args) {
+	demoAvailable = true;
+}
+
+function processDemoAlert(args) {
+	if (game.state == State.Free) {
+		showDemoButton.style.backgroundColor = '#FFE999';
+	}
 }
 
 function processFinalPosition(args) {
@@ -1312,6 +1324,7 @@ function processSetState(args) {
 	moveSequence = []
 	redoStack = []
 	moveCount = null;
+	showDemoButton.style.backgroundColor = '';
 }
 
 function processAssignPlayer(args) {
@@ -1505,6 +1518,7 @@ function startDemo() {
 	advanceDemo();
 	updateUI();
 	console.assert(isViewingDemo());
+	showDemoButton.style.backgroundColor = '';
 }
 
 function advanceDemo() {

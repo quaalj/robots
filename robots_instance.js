@@ -121,7 +121,7 @@ export class RobotsGameInstance {
 	makePlayerVoteCommand(player) {
 		return `PLAYER_VOTE ${player.id} ${player.vote}`;
 	}
-	
+
 	syncGame(client) {
 		let commands = [];
 		commands.push(this.makeBoardCommand());
@@ -289,7 +289,11 @@ export class RobotsGameInstance {
 	makeDemoReadyCommand() {
 		return `DEMO_READY`;
 	}
-	
+
+	makeDemoAlertCommand() {
+		return `DEMO_ALERT`;
+	}
+
 	makeRobotFinalPositionCommand() {
 		let str = 'FINAL_POSITION'
 	
@@ -528,6 +532,10 @@ export class RobotsGameInstance {
 							this.clearTimer();
 							commands.push(this.makeGivePlayerTokensCommand(client.playerId, this.game.currentGoal));
 							commands.push(this.makeGameStateCommand(this.game.state));
+
+							if(this.demoSequence != null && this.moveSequence.length > this.demoSequence.length) {
+								commands.push(this.makeDemoAlertCommand());
+							}
 						}
 					}
 		
