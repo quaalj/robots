@@ -789,7 +789,7 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 					// Found solution (if we ever do the motion-transfer version, will need to always the new position for the active robot)
 					return dumpSolution(board, robots, nextState, visitedStates);
 				}
-				
+
 				// Don't push solutions past a certain depth
 				if (earlyOut != null && earlyOut >= nextState.depth) {
 					continue;
@@ -1147,7 +1147,6 @@ export class Game {
 		}
 
 		this.players.set(forceId, new Player(forceId, defaultName));
-
 		return forceId;
 	}
 
@@ -1164,7 +1163,6 @@ export class Game {
 				targetPlayer.tokens.push(goal);
 			}
 		}
-		
 	}
 
 	giveTokens(playerId, tokens) {
@@ -1336,7 +1334,7 @@ export class Game {
 			if (topScore == null) {
 				topScore = players[i].getScore();
 			} else if (players[i].getScore() < topScore) {
-				return players.slice(0, i - 1);
+				return players.slice(0, i);
 			}
 		}
 		return players;
