@@ -393,9 +393,11 @@ class MoveArrow {
 			result = true;
 		}
 
-		for(let i in this.game.robots) {
-			if(cell.equals(MoveArrow.finalRobotPositions[i])) {
-				result = true;
+		if(isViewingDemo()) {
+			for(let i in this.game.robots) {
+				if(cell.equals(MoveArrow.finalRobotPositions[i])) {
+					result = true;
+				}
 			}
 		}
 
@@ -1156,7 +1158,6 @@ window.addEventListener("keydown", function(event) {
 
 function clearMoveArrows() {
 	MoveArrow.clearCellCounts();
-	MoveArrow.clearFinalPositions();
 	arrowSequence = [];
 }
 
@@ -1329,7 +1330,7 @@ function processDemoAlert(args) {
 
 function processFinalPosition(args) {
 	for(let i = 0; i < args.length; i += 2) {
-		MoveArrow.setFinalPosition(i, args[i * 2], args[i * 2 + 1]);
+		MoveArrow.setFinalPosition(i / 2, args[i], args[i + 1]);
 	}
 }
 
@@ -1417,6 +1418,7 @@ function processSetState(args) {
 	moveCount = null;
 	showDemoButton.style.backgroundColor = '';
 	activeTimer.cancel()
+	MoveArrow.clearFinalPositions();
 }
 
 function processAssignPlayer(args) {
