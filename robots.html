@@ -229,7 +229,8 @@ class Robot {
 }
 
 class SandTimer {
-	static COLOR = "#DD1111";
+	static DEFAULT_COLOR = "#DD1111";
+	static HIGHLIGHT_COLOR = "#DDBB11"
 	static LINE_THICKNESS = 5.0;
 
 	constructor(x1, x2, y1, y2) {
@@ -239,7 +240,12 @@ class SandTimer {
 		this.y2 = Math.max(y1, y2);
 
 		this.tweenAlpha = 0.0;
-		this.onTimeUp = null;
+
+		this.color = SandTimer.DEFAULT_COLOR;
+	}
+
+	highlight() {
+		this.color = SandTimer.HIGHLIGHT_COLOR;
 	}
 
 	draw(canvas) {
@@ -252,7 +258,7 @@ class SandTimer {
 		let hProp = hLength / perimeterLength;
 		let vProp = vLength / perimeterLength;
 
-		ctx.strokeStyle = SandTimer.COLOR;
+		ctx.strokeStyle = this.color;
 		ctx.lineWidth = SandTimer.LINE_THICKNESS;
 		ctx.lineCap = "square";
 
@@ -295,13 +301,9 @@ class SandTimer {
 		this.tweenAlpha =  currTime / totalTime;
 	}
 
-	setOnTimeUp(onTimeUp) {
-		this.setOnTimeUp = onTimeUp;
-	}
-
 	cancel() {
 		this.tweenAlpha = 0.0;
-		this.timeLeft = 0;
+		this.color = SandTimer.DEFAULT_COLOR;
 	}
 }
 
@@ -1280,6 +1282,11 @@ function processStartSolve(args) {
 	moveCount = 0;
 	moveSequence = []
 	redoStack = []
+
+
+	if(isClientSolving()) {
+		activeTimer.highlight();
+	}
 
 	updateUI();
 }
