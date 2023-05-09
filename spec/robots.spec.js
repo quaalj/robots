@@ -196,9 +196,9 @@ describe("Board", function() {
             for (let j = 0; j < 4; ++j) {
                 let indexC = board.indexify(i, j);
                 if (i == 2 || j == 2) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else {
-                    expect(rookBoard[indexC]).toBe(2);
+                    expect(rookBoard[indexC]).toBe(1);
                 }
             }
         }
@@ -218,11 +218,11 @@ describe("Board", function() {
                 if ((i == 0 && j == 0) || (i == 2 && j == 0)) {
                     expect(rookBoard[indexC]).toBe(undefined);
                 } else if (i == 2 || j == 2) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else if ((i == 1 && j == 0) || (i == 0 && j > 0)) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else {
-                    expect(rookBoard[indexC]).toBe(2);
+                    expect(rookBoard[indexC]).toBe(1);
                 }
             }
         }
@@ -242,9 +242,9 @@ describe("Board", function() {
                 if ((i == 0 && j == 0) || (i == 2 && j == 0)) {
                     expect(rookBoard[indexC]).toBe(undefined);
                 } else if (i == 2 || j == 2 || (i == 1 && j == 0)) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else {
-                    expect(rookBoard[indexC]).toBe(2);
+                    expect(rookBoard[indexC]).toBe(1);
                 }
             }
         }
