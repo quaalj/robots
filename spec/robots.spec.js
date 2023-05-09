@@ -196,9 +196,9 @@ describe("Board", function() {
             for (let j = 0; j < 4; ++j) {
                 let indexC = board.indexify(i, j);
                 if (i == 2 || j == 2) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else {
-                    expect(rookBoard[indexC]).toBe(2);
+                    expect(rookBoard[indexC]).toBe(1);
                 }
             }
         }
@@ -218,11 +218,11 @@ describe("Board", function() {
                 if ((i == 0 && j == 0) || (i == 2 && j == 0)) {
                     expect(rookBoard[indexC]).toBe(undefined);
                 } else if (i == 2 || j == 2) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else if ((i == 1 && j == 0) || (i == 0 && j > 0)) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else {
-                    expect(rookBoard[indexC]).toBe(2);
+                    expect(rookBoard[indexC]).toBe(1);
                 }
             }
         }
@@ -242,9 +242,9 @@ describe("Board", function() {
                 if ((i == 0 && j == 0) || (i == 2 && j == 0)) {
                     expect(rookBoard[indexC]).toBe(undefined);
                 } else if (i == 2 || j == 2 || (i == 1 && j == 0)) {
-                    expect(rookBoard[indexC]).toBe(1);
+                    expect(rookBoard[indexC]).toBe(0);
                 } else {
-                    expect(rookBoard[indexC]).toBe(2);
+                    expect(rookBoard[indexC]).toBe(1);
                 }
             }
         }
@@ -279,7 +279,7 @@ describe("solveBoard", function() {
         expect(solution.length).toBe(4);
     });
 
-    it("Solves troublesome board", function() {
+    it("solves troublesome board", function() {
         let rand = new Mulberry32(325538665.35267997);
         let board = generateBoard(rand.randRaw());
 
@@ -293,7 +293,7 @@ describe("solveBoard", function() {
         expect(solution.length).toBe(7);
     });
 
-    it("Solves another troublesome board", function() {
+    it("solves another troublesome board", function() {
         let rand = new Mulberry32(325538665.35267997);
         let board = generateBoard(rand.randRaw());
 
@@ -303,7 +303,7 @@ describe("solveBoard", function() {
         let robots = [new Point(15, 15), new Point(1, 4), new Point(13, 14), new Point(2, 7)];
 
         let solution = solveBoard(board, goalCell.goal, robots);
-        console.log(solution);
+
         expect(solution.length).toBe(8);
     })
 });
