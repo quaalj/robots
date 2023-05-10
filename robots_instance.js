@@ -27,7 +27,8 @@ export class RobotsGameInstance {
 	}
 
 	initializeGame(params) {
-		this.game.resetGame(4, Math.random() * 2000000000);
+		//this.game.resetGame(4, Math.random() * 2000000000);
+		this.game.resetGame(4, 455880068.7900666);
 		this.game.startWaitState();
 		this.currentTimerId = setTimeout(() => this.startRound(), Math.floor(this.game.revealTimeout * 1000));
 
