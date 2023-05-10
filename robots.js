@@ -755,7 +755,142 @@ export class Board {
 					continue;
 				}
 
-				let subDir = robotPos.sub(robots[i]).getDirection();
+				let subDir = robots[i].sub(robotPos).getDirection();
+				if (subDir !== null && Point.fromDirection(subDir).equals(delta))
+				{
+					result = false;
+					break;
+				}
+			}
+
+			if (result)
+			{
+				let nextPos = this.bakedCells[this.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir];
+
+				if(nextPos !== undefined)
+				{
+					if (outList != null)
+					{
+						outList.push(nextPos);
+					}
+					return nextPos;
+				}
+			}
+		}
+
+		while (!blocked) {
+			let nextPos = robotPos.add(delta);
+
+			if (nextPos.equals(robots[robotIdx])) {
+				return robots[robotIdx];
+			}
+
+			blocked = this.isMoveBlocked(robotPos, nextPos);
+			if (!blocked) {
+				for (let i = 0; i < robots.length; ++i) {
+					if (nextPos.equals(robots[i])) {
+						// TODO: maybe implement motion-transfer robots as an optional thing?
+						blocked = true;
+						break;
+					}
+				}
+			}
+
+			if (blocked) {
+				let cell = this.getCell(robotPos);
+				if (cell.bumper != null && !allowInvalidEndpoint) {
+					if (outList != null) {
+						outList.length = 0;
+					}
+					robotPos = robots[robotIdx];
+				}
+				break;
+			}
+
+			console.assert(this.contains(nextPos));
+
+			robotPos = nextPos;
+
+			let cell = this.getCell(robotPos);
+			if (cell.bumper != null && cell.bumper.color != robotIdx) {
+				if (outList != null) {
+					outList.push(robotPos);
+				}
+				moveDir = Direction.bumperSlant(moveDir, cell.bumper.slant);
+				delta = Point.fromDirection(moveDir);
+			}
+		}
+
+		if (outList != null) {
+			if (!(outList.length == 1 && outList[0] == robotPos)) {
+				outList.push(robotPos);
+			}
+		}
+		return robotPos;
+	}
+
+	bakeBoard(numRobots) {
+		this.bakedCells = new Array(this.size.x * this.size.y);
+		let robots = new Array(numRobots);
+
+		for (let x = 0; x < this.size.x; ++x) {
+			for (let y = 0; y < this.size.y; ++y) {
+				let robotMoves = new Array(numRobots);
+
+				for(let robot = 0; robot < numRobots; ++robot) {
+					let moves = new Array(numRobots);
+
+					robots = [];
+					robots[robot] = new Point(x, y);
+
+					for(let dir = 0; dir < 4; ++dir) {
+						let outlist = [];
+						moves[dir] = this.doMove(robots, robot, dir, outlist);
+
+						if(outlist.length > 2) {
+							moves[dir] = undefined;
+						}
+					}
+
+					robotMoves[robot] = moves;
+				}
+
+				this.bakedCells[this.indexify(x, y)] = robotMoves;
+			}
+		}
+	}
+
+	doFastMove(robots, robotIdx, moveDir, outList = null, allowInvalidEndpoint = false) {
+		let blocked = false;
+		let robotPos = robots[robotIdx];
+
+		console.assert(!isNaN(robotPos.x));
+		console.assert(!isNaN(robotPos.y));
+
+		let delta =  Point.fromDirection(moveDir);
+
+		console.assert(!isNaN(delta.x));
+		console.assert(!isNaN(delta.y));
+
+		if (outList != null) {
+			outList.length = 0;
+			outList.push(robotPos);
+		}
+
+		let targetCell = this.bakedCells[this.indexify(robotPos.x, robotPos.y)];
+
+		if(targetCell !== undefined)
+		{
+			let result = true;
+
+			for (let i = 0; i < robots.length; ++i)
+			{
+				if (i == robotIdx)
+				{
+					continue;
+				}
+
+				let subDir = robots[i].sub(robotPos).getDirection();
 				if (subDir !== null && Point.fromDirection(subDir).equals(delta))
 				{
 					result = false;
@@ -920,8 +1055,12 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 		for (let robot = 0; robot < state.robots.length; ++robot) {
 			for (let dir = 0; dir < 4; ++dir) {
 
+
 				//let result = board.doFastMove(state.robots, robot, dir);
 				let result = board.doFastMove(state.robots, robot, dir);
+
+				console.assert(result.equals(board.doMove(state.robots, robot, dir)) === true);
+
 				// No change, don't process
 
 				if (result.equals(state.robots[robot])) {
