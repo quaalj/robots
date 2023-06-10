@@ -1,5 +1,5 @@
-import { Board, Bumper, RobotState, Color, solveBoard, Goal } from "../robots.js";
-import { Point, Direction } from "../util.js";
+import {Board, Bumper, RobotState, Color, solveBoard, Goal, generateBoard} from "../robots.js";
+import { Point, Direction, Mulberry32 } from "../util.js";
 
 describe("Board", function() {
     it("moves robots", function() {
@@ -278,4 +278,33 @@ describe("solveBoard", function() {
         let solution = solveBoard(board, goalCell.goal, robots);
         expect(solution.length).toBe(4);
     });
+
+    it("Solves troublesome board", function() {
+        let rand = new Mulberry32(325538665.35267997);
+        let board = generateBoard(rand.randRaw());
+
+        let goalCell = board.getCell(new Point(2, 14));
+        goalCell.goal = new Goal(1, Symbol.Gear);
+
+        let robots = [new Point(4, 0), new Point(0, 4), new Point(8, 9), new Point(2, 2)];
+
+        let solution = solveBoard(board, goalCell.goal, robots);
+
+        expect(solution.length).toBe(7);
+    });
+
+    it("Solves another troublesome board", function() {
+        let rand = new Mulberry32(325538665.35267997);
+        let board = generateBoard(rand.randRaw());
+
+        let goalCell = board.getCell(new Point(1, 9));
+        goalCell.goal = new Goal(0, Symbol.Star);
+
+        let robots = [new Point(15, 15), new Point(1, 4), new Point(13, 14), new Point(2, 7)];
+
+        let solution = solveBoard(board, goalCell.goal, robots);
+        console.log(solution);
+        expect(solution.length).toBe(8);
+    })
 });
+
