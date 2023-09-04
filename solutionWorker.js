@@ -2,6 +2,10 @@ import {solveBoard, Game, Board, Goal, RobotMove} from './robots.js'
 import {Point} from './util.js'
 import {parentPort} from "worker_threads"
 
+import createRequire from "node:module";
+let require = createRequire.createRequire(import.meta.url);
+let {doFasterMove, loadBoard} = require('./build/Release/addon');
+
 function compactSolution(stateSequence) {
     let msg = [];
     for(let move in stateSequence) {
@@ -27,13 +31,15 @@ function runSolver(board, goal, robots, seed) {
     console.log("Starting solver");
 
     try {
-        let stateSequence = solveBoard(board, goal, robots, null);
+        //let stateSequence = solveBoard(board, goal, robots, null);
+        let stateSequence = solveBoard(board, goal, robots, null, doFasterMove, loadBoard);
         let msg = {'solution' : compactSolution(stateSequence), 'goalColor' : goal.color, 'goalSymbol' : goal.symbol, 'robots':robots, 'seed' : seed};
         console.log("Worker found solution");
         parentPort.postMessage(msg);
         parentPort.close();
     } catch (err) {
         console.log("Solver error: " + err.toString());
+
     }
 }
 

@@ -383,7 +383,7 @@ export class Board {
 			}
 		}
 	}
-	
+
 	static parseBoard(s) {
 		let width = 0;
 		while (s[width] != '\n') {
@@ -392,7 +392,7 @@ export class Board {
 		width /= 2;
 		let height = s.count('\n');
 		let board = new Board(width, height);
-		
+
 		let currentChar = 0;
 		for (let y = 0; y < height; ++y) {
 			for (let x = 0; x < width; ++x) {
@@ -402,7 +402,7 @@ export class Board {
 			}
 			++currentChar;
 		}
-		
+
 		return board;
 	}
 
@@ -417,11 +417,15 @@ export class Board {
 		}
 		return result;
 	}
-	
+
+	toSolver() {
+		return this.toString().replaceAll("\n", "");
+	}
+
 	indexify(x, y) {
 		return (y * this.size.x) + x;
 	}
-	
+
 	deindexify(idx) {
 		return new point(idx % this.size.x, intdiv(idx, this.size.x));
 	}
@@ -463,7 +467,7 @@ export class Board {
 		}
 		return cells;
 	}
-	
+
 	setCell(...args) {
 		if (args.length == 3) {
 			this.points[this.indexify(args[0], args[1])] = args[2];
@@ -471,7 +475,7 @@ export class Board {
 			this.setCell(args[0].x, args[0].y, args[1]);
 		}
 	}
-	
+
 	getCell(...args) {
 		if (args.length == 2) {
 			if (this.contains(...args)) {
@@ -482,7 +486,7 @@ export class Board {
 			return this.getCell(args[0].x, args[0].y);
 		}
 	}
-	
+
 	findGoal(goal) {
 		for (let y = 0; y < this.height; ++y) {
 			for (let x = 0; x < this.width; ++x) {
@@ -495,7 +499,7 @@ export class Board {
 		console.assert(false, "Could not find goal %s", goal);
 		return null;
 	}
-	
+
 	contains(...args) {
 		if (args.length == 2) {
 			return args[0] >= 0 && args[0] < this.width && args[1] >= 0 && args[1] < this.height;
@@ -518,12 +522,12 @@ export class Board {
 	setFenceAt(p, direction, value) {
 		this.setFenceBetween(p, p.add(Point.fromDirection(direction)), value);
 	}
-	
+
 	hasFenceBetween(p0, p1) {
 		if (!(this.contains(p0) || !this.contains(p1))) {
 			return true;
 		}
-		
+
 		let dirTo1 = (p1.sub(p0)).getDirection();
 		let dirTo0 = (p0.sub(p1)).getDirection();
 
@@ -536,7 +540,7 @@ export class Board {
 		if (cell1 != null && cell1.getFence(dirTo0)) {
 			return true;
 		}
-		
+
 		return false;
 	}
 
@@ -544,7 +548,7 @@ export class Board {
 		if (!(this.contains(p0) || !this.contains(p1))) {
 			return;
 		}
-		
+
 		let dirTo1 = (p1.sub(p0)).getDirection();
 		let dirTo0 = (p0.sub(p1)).getDirection();
 
@@ -558,24 +562,24 @@ export class Board {
 			this.getCell(p1).setFence(dirTo0, value);
 		}
 	}
-	
+
 	isMoveBlocked(p0, p1) {
 		return !this.contains(p0) || !this.contains(p1) || this.hasFenceBetween(p0, p1);
 	}
-	
+
 	rotate90(iterations) {
 		while (iterations < 0) {
 			iterations += 4;
 		}
-		
+
 		let result = null;
-		
+
 		if (iterations % 2 == 0) {
 			result = new Board(this.width, this.height);
 		} else {
 			result = new Board(this.height, this.width);
 		}
-		
+
 		for (let y = 0; y < this.height; ++y) {
 			for (let x = 0; x < this.width; ++x) {
 				let location = new Point(x, y);
@@ -583,14 +587,14 @@ export class Board {
 				result.setCell(location.rotate90(this.size, iterations), cell.rotate90(iterations));
 			}
 		}
-		
+
 		return result;
 	}
 
 	canUseIntState(numRobots) {
 		return numRobots <= 4 && this.size.x <= 16 && this.size.y <= 16;
 	}
-	
+
 	static pasteBoards(boards) {
 		let fullHeight = 0;
 		let fullWidth = 0;
@@ -602,135 +606,36 @@ export class Board {
 				}
 			}
 		}
-		
+
 		let result = new Board(fullWidth, fullHeight);
-		
+
 		let currentYBase = 0;
 		for (let yBoard = 0; yBoard < boards.length; ++yBoard) {
 			let currentXBase = 0;
 			for (let xBoard = 0; xBoard < boards[yBoard].length; ++xBoard) {
 				let currentBoard = boards[yBoard][xBoard];
-			
+
 				for (let y = 0; y < currentBoard.height; ++y) {
 					for (let x = 0; x < currentBoard.width; ++x) {
 						result.setCell(currentXBase + x, currentYBase + y, currentBoard.getCell(x, y).clone());
 					}
 				}
-				
+
 				currentXBase += currentBoard.width;
 			}
-			
+
 			currentYBase += boards[yBoard][0].height;
 		}
-	
+
 		return result;
 	}
-	
+
 	doMove(robots, robotIdx, moveDir, outList = null, allowInvalidEndpoint = false) {
 		let blocked = false;
 		let robotPos = robots[robotIdx];
 
 		console.assert(!isNaN(robotPos.x));
 		console.assert(!isNaN(robotPos.y));
-		
-		let delta =  Point.fromDirection(moveDir);
-		
-		console.assert(!isNaN(delta.x));
-		console.assert(!isNaN(delta.y));
-
-		if (outList != null) {
-			outList.length = 0;
-			outList.push(robotPos);
-		}
-
-		while (!blocked) {
-			let nextPos = robotPos.add(delta);
-			
-			if (nextPos.equals(robots[robotIdx])) {
-				return robots[robotIdx];
-			}
-			
-			blocked = this.isMoveBlocked(robotPos, nextPos);
-			if (!blocked) {
-				for (let i = 0; i < robots.length; ++i) {
-					if (nextPos.equals(robots[i])) {
-						// TODO: maybe implement motion-transfer robots as an optional thing?
-						blocked = true;
-						break;
-					}
-				}
-			}
-			
-			if (blocked) {
-				let cell = this.getCell(robotPos);
-				if (cell.bumper != null && !allowInvalidEndpoint) {
-					if (outList != null) {
-						outList.length = 0;
-					}
-					robotPos = robots[robotIdx];
-				}
-				break;
-			}
-
-			console.assert(this.contains(nextPos));
-
-			robotPos = nextPos;
-
-			let cell = this.getCell(robotPos);
-			if (cell.bumper != null && cell.bumper.color != robotIdx) {
-				if (outList != null) {
-					outList.push(robotPos);
-				}
-				moveDir = Direction.bumperSlant(moveDir, cell.bumper.slant);
-				delta = Point.fromDirection(moveDir);
-			}
-		}
-
-		if (outList != null) {
-			if (!(outList.length == 1 && outList[0] == robotPos)) {
-				outList.push(robotPos);
-			}
-		}
-		return robotPos;
-	}
-
-	bakeBoard(numRobots) {
-		this.bakedCells = new Array(this.size.x * this.size.y);
-		let robots = new Array(numRobots);
-
-		for (let x = 0; x < this.size.x; ++x) {
-			for (let y = 0; y < this.size.y; ++y) {
-				let robotMoves = new Array(numRobots);
-
-				for(let robot = 0; robot < numRobots; ++robot) {
-					let moves = new Array(numRobots);
-
-					robots = [];
-					robots[robot] = new Point(x, y);
-
-					for(let dir = 0; dir < 4; ++dir) {
-						let outlist = [];
-						moves[dir] = this.doMove(robots, robot, dir, outlist);
-
-						if(outlist.length > 2) {
-							moves[dir] = undefined;
-						}
-					}
-
-					robotMoves[robot] = moves;
-				}
-
-				this.bakedCells[this.indexify(x, y)] = robotMoves;
-			}
-		}
-	}
-
-	doFastMove(robots, robotIdx, moveDir, outList = null, allowInvalidEndpoint = false) {
-		let blocked = false;
-		let robotPos = robots[robotIdx];
-
-		console.assert(!isNaN(robotPos.x));
-		console.assert(!isNaN(robotPos.y));
 
 		let delta =  Point.fromDirection(moveDir);
 
@@ -740,42 +645,6 @@ export class Board {
 		if (outList != null) {
 			outList.length = 0;
 			outList.push(robotPos);
-		}
-
-		let targetCell = this.bakedCells[this.indexify(robotPos.x, robotPos.y)];
-
-		if(targetCell !== undefined)
-		{
-			let result = true;
-
-			for (let i = 0; i < robots.length; ++i)
-			{
-				if (i == robotIdx)
-				{
-					continue;
-				}
-
-				let subDir = robots[i].sub(robotPos).getDirection();
-				if (subDir !== null && Point.fromDirection(subDir).equals(delta))
-				{
-					result = false;
-					break;
-				}
-			}
-
-			if (result)
-			{
-				let nextPos = this.bakedCells[this.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir];
-
-				if(nextPos !== undefined)
-				{
-					if (outList != null)
-					{
-						outList.push(nextPos);
-					}
-					return nextPos;
-				}
-			}
 		}
 
 		while (!blocked) {
@@ -867,7 +736,7 @@ export class Board {
 		console.assert(!isNaN(robotPos.x));
 		console.assert(!isNaN(robotPos.y));
 
-		let delta =  Point.fromDirection(moveDir);
+		let delta = Point.fromDirection(moveDir);
 
 		console.assert(!isNaN(delta.x));
 		console.assert(!isNaN(delta.y));
@@ -877,12 +746,14 @@ export class Board {
 			outList.push(robotPos);
 		}
 
+		/*
 		let targetCell = this.bakedCells[this.indexify(robotPos.x, robotPos.y)];
 
 		if(targetCell !== undefined)
 		{
+			// check to see if are there any other robots in this robot's path
+			// if so, don't look up cached value
 			let result = true;
-
 			for (let i = 0; i < robots.length; ++i)
 			{
 				if (i == robotIdx)
@@ -912,7 +783,7 @@ export class Board {
 				}
 			}
 		}
-
+*/
 		while (!blocked) {
 			let nextPos = robotPos.add(delta);
 
@@ -963,6 +834,134 @@ export class Board {
 		}
 		return robotPos;
 	}
+}
+
+
+function doFastMoveSelfContained(robots, robotIdx, moveDir, outList = null, allowInvalidEndpoint = false, board) {
+	let blocked = false;
+	let robotPos = robots[robotIdx];
+	let isMoveCacheable = true;
+
+	// create new move cache
+	if (cachedCells === undefined) {
+		cachedCells = new Array(board.size.x * board.size.y);
+		for (let x = 0; x < board.size.x; ++x) {
+			for (let y = 0; y < board.size.y; ++y) {
+				let directions = new Array(4);
+				for (let dir = 0; dir < 4; dir++) {
+					directions[dir] = new Array(5);
+				}
+				cachedCells[board.indexify(x, y)] = directions;
+			}
+		}
+	}
+	console.assert(!isNaN(robotPos.x));
+	console.assert(!isNaN(robotPos.y));
+
+	let delta = Point.fromDirection(moveDir);
+
+	console.assert(!isNaN(delta.x));
+	console.assert(!isNaN(delta.y));
+
+	if (outList != null) {
+		outList.length = 0;
+		outList.push(robotPos);
+	}
+
+
+    let targetCell = cachedCells[board.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir];
+    if(targetCell != undefined)
+    {
+        // check to see if are there any other robots in this robot's path
+        // if so, don't look up cached value
+        let result = true;
+        for (let i = 0; i < robots.length; ++i)
+        {
+            if (i == robotIdx)
+            {
+                continue;
+            }
+
+            let subDir = robots[i].sub(robotPos).getDirection();
+            if (subDir !== null && Point.fromDirection(subDir).equals(delta))
+            {
+                result = false;
+                break;
+            }
+        }
+
+        if (result)
+        {
+            let nextPos = cachedCells[board.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir];
+
+            if(nextPos !== undefined)
+            {
+                if (outList != null)
+                {
+                    outList.push(nextPos);
+                }
+                return nextPos;
+            }
+        }
+    }
+
+	while (!blocked) {
+		let nextPos = robotPos.add(delta);
+
+		if (nextPos.equals(robots[robotIdx])) {
+			return robots[robotIdx];
+		}
+
+		blocked = board.isMoveBlocked(robotPos, nextPos);
+		if (!blocked) {
+			for (let i = 0; i < robots.length; ++i) {
+				if (nextPos.equals(robots[i])) {
+					// TODO: maybe implement motion-transfer robots as an optional thing?
+					blocked = true;
+					if (i != robotIdx) {
+						isMoveCacheable = false;
+					}
+					break;
+				}
+			}
+		}
+
+		if (blocked) {
+			let cell = board.getCell(robotPos);
+			if (cell.bumper != null && !allowInvalidEndpoint) {
+				if (outList != null) {
+					outList.length = 0;
+				}
+				robotPos = robots[robotIdx];
+			}
+			break;
+		}
+
+		console.assert(board.contains(nextPos));
+
+		robotPos = nextPos;
+
+		let cell = board.getCell(robotPos);
+		if (cell.bumper != null && cell.bumper.color != robotIdx) {
+			if (outList != null) {
+				outList.push(robotPos);
+			}
+			isMoveCacheable = false;
+			moveDir = Direction.bumperSlant(moveDir, cell.bumper.slant);
+			delta = Point.fromDirection(moveDir);
+		}
+	}
+
+	if (outList != null) {
+		if (!(outList.length == 1 && outList[0] == robotPos)) {
+			outList.push(robotPos);
+		}
+	}
+
+	if (isMoveCacheable && targetCell == undefined) {
+		cachedCells[board.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir] = robotPos;
+	}
+	return robotPos;
 }
 
 export function dumpSolution(board, originalRobots, finalState, stateTree) {
@@ -993,15 +992,21 @@ export function dumpSolution(board, originalRobots, finalState, stateTree) {
 	
 	return moves;
 }
-	
-export function solveBoard(board, goal, robots, earlyOut = null) {
+
+let cachedCells;
+export function solveBoard(board, goal, robots, earlyOut = null, mover = doFastMoveSelfContained, loader = null) {
 	let botCopy = [...robots]
 	let isWarp = goal.symbol == Symbol.Warp;
 	const MAX_MOVE = 25;
 
 	let solverStartTime = Date.now();
 	let rejectedStates = 0;
-	board.bakeBoard(4);
+
+	cachedCells = undefined;
+
+	if (loader != null) {
+		loader(board.toSolver());
+	}
 
 	let startingState = new RobotState(botCopy, isWarp);
 	let visitedStates = new Map();
@@ -1054,15 +1059,24 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 
 		for (let robot = 0; robot < state.robots.length; ++robot) {
 			for (let dir = 0; dir < 4; ++dir) {
+				//let result = doFastMoveSelfContained(state.robots, robot, dir, null, false,board);
+				//let fasterResult = doFasterMove(state.robots, robot, dir);
 
+				//if (mover !== doFastMoveSelfContained) {
+				//	console.warn(JSON.stringify(state.robots), robot, dir);
+				//}
+				let result = mover(state.robots, robot, dir, null, false, board);
 
-				//let result = board.doFastMove(state.robots, robot, dir);
-				let result = board.doFastMove(state.robots, robot, dir);
+				if (! (result instanceof Point)) {
+					result = new Point(result.x, result.y);
+				}
 
-				console.assert(result.equals(board.doMove(state.robots, robot, dir)) === true);
+				//console.assert(result.equals(board.doMove(state.robots, robot, dir)) === true);
+				//if (!result.equals(board.doMove(state.robots, robot, dir)) ) {
+				//	console.log("Sad!");
+				//}
 
 				// No change, don't process
-
 				if (result.equals(state.robots[robot])) {
 					continue;
 				}
