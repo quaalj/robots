@@ -801,7 +801,7 @@ export function solveBoard(board, goal, robots, earlyOut = null) {
 					continue;
 				}
 
-				let lowerBoundCost = nextState.depth + getHeuristic(robotPositions);
+				let lowerBoundCost = nextState.depth;// + getHeuristic(robotPositions);
 
 				if (lowerBoundCost > MAX_MOVE) {
 					continue;
