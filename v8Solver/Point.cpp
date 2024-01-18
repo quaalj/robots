@@ -1,4 +1,4 @@
-#include "point.h"
+#include "Point.h"
 #include "nan.h"
 #include "v8.h"
 #include <iostream>
@@ -26,6 +26,7 @@ Point::Point(const Point &point2) {
 Point &Point::operator=(const Point &point2) {
     x = point2.x;
     y = point2.y;
+
     return *this;
 }
 

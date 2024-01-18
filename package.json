@@ -17,7 +17,7 @@
   "scripts": {
     "test": "jasmine",
     "start": "node server.js",
-    "compile": "node-gyp rebuild"
+    "compile": "node-gyp rebuild -j max"
   },
   "name": "robots",
   "description": "A fun project I made because I didn't like this or that aspect of other web versions of RR out there.",

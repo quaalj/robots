@@ -1,118 +1,58 @@
+#include "Board.h"
 #include "nan.h"
 #include "v8.h"
-#include <string>
+#include "Point.h"
+#include "Cell.h"
+
 #include <iostream>
-#include <cassert>
+#include <array>
 
-#include "point.h"
-#include "cell.h"
-
-#define BOARD_SIZE_X 16
-#define BOARD_SIZE_Y 16
-#define NUM_ROBOTS 4
-#define NUM_DIRECTIONS 4
-
-using namespace std;
 using namespace Nan;
-using namespace v8;
 
-// doMove method arguments
-Point **robots;
-int robotIdx;
-Direction moveDir;
-Nan::MaybeLocal<Object> outlist = Nan::MaybeLocal<Object>();
-bool allowInvalidEndpoint = false;
+static Direction getBounceDirection(Direction moveDirection, bool slant);
 
-// cached moves
-static Cell *board[BOARD_SIZE_X * BOARD_SIZE_Y] = {0};
-static Point *cachedCells[BOARD_SIZE_X * BOARD_SIZE_Y][NUM_DIRECTIONS][NUM_ROBOTS] = {0};
+Board::Board() : Board(0, 0) {}
 
-void readArguments(NAN_METHOD_ARGS_TYPE info);
-int indexify(Point robotPosition);
-Point doMoveAlgorithm();
-bool isMoveBlocked(Point robotPos, Point);
-Cell *getCell(Point point);
-Direction getBounceDirection(Direction moveDirection, bool slant);
-
-NAN_METHOD(loadBoard) {
-    // first parameter to loadBoard, a string representation of the board
-    Local<String> inString = To<String>(info[0]).ToLocalChecked();
-    std::string str(*Nan::Utf8String(inString), inString->Length());
-
-    for (int i = 0; i < BOARD_SIZE_X * BOARD_SIZE_Y; i++) {
-        // reset previous board and move cache
-        if (board[i] != nullptr) {
-            free(board[i]);
-        }
-        std::memset(cachedCells, 0, sizeof(cachedCells));
-
-        // load board contents from string
-        board[i] = new Cell(str[i * 2], str[i * 2 + 1]);
-    }
+Board::Board(int width, int height) : width(width), height(height) {
+    initCells();
 }
 
-NAN_METHOD(doFasterMove) {
-    readArguments(info);
+Board::Board(v8::Local<v8::Object> object) {
+    v8::Local<v8::Array> points = v8::Local<v8::Array>::Cast(Get(object, Encode("points", 6, UTF8)).ToLocalChecked());
 
-    Point returnValue = doMoveAlgorithm();
-    info.GetReturnValue().Set(returnValue.toV8());
+    width = To<int>(Get(object, Encode("width", 5, UTF8)).ToLocalChecked()).FromJust();
+    height = To<int>(Get(object, Encode("height", 6, UTF8)).ToLocalChecked()).FromJust();
 
-    for (int i = 0; i < 4; i++) {
-        if (robots[i] != nullptr) {
-            free(robots[i]);
-            robots[i] = nullptr;
+    initCells();
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            if (Has(points, indexify(x, y)).FromJust()) {
+                v8::Local<v8::Object> point = To<v8::Object>(Get(points, indexify(x, y)).ToLocalChecked()).ToLocalChecked();
+                cells[indexify(x, y)] = new Cell(point);
+            }
         }
     }
-    free(robots);
-    robots = nullptr;
 }
 
-NAN_MODULE_INIT(Initialize) {
-        NAN_EXPORT(target, doFasterMove);
-        NAN_EXPORT(target, loadBoard);
-}
+// create a 2-d array  for the board's cells and another for the cache of moves
+void Board::initCells() {
+    cells.resize(width * height);
+    cachedCells.resize(width * height);
 
-NODE_MODULE(addon, Initialize);
-
-// Only need if this is going into the worker thread
-NAN_MODULE_WORKER_ENABLED(addon, Initialize);
-
-void readArguments(NAN_METHOD_ARGS_TYPE info) {
-    // read robots list
-    Local<Array> robotList = Local<Array>::Cast(info[0]);
-    int numRobots = robotList->Length();
-
-    robots = (Point **)malloc(sizeof(Point*) * numRobots);
-    for (int i = 0; i < numRobots; i++)
-    {
-        if (Has(robotList, i).FromJust()) {
-            Local<Object> point = To<Object>(Get(robotList, i).ToLocalChecked()).ToLocalChecked();
-
-            robots[i] = new Point(point);
+    for (int i = 0; i < width * height; i++) {
+        cachedCells[i].resize(NUM_DIRECTIONS);
+        for(int j = 0; j < NUM_DIRECTIONS; j++) {
+            cachedCells[i][j].resize(NUM_ROBOTS);
         }
     }
-
-    // read robotIdx
-    robotIdx = To<int>(info[1]).FromJust();
-
-    // read moveDir
-    moveDir = (Direction)To<int>(info[2]).FromJust();
-
-    // read outlist
-    if(info.Length() >= 4 && !info[3]->IsNullOrUndefined()) {
-        outlist = To<Object>(info[3]);
-    }
-
-    // read allowInvalidEndpoint
-    if (info.Length() == 5 && !To<bool>(info[4]).IsNothing()) {
-        allowInvalidEndpoint = To<bool>(info[4]).FromJust();
-    }
 }
 
-Point doMoveAlgorithm() {
+// move a robot on the board
+Point Board::doMove(std::vector<Point> &robots, int robotIdx, Direction moveDir, bool allowInvalidEndpoint) {
     bool blocked = false;
     bool isCacheable = true;
-    Point robotPos = Point(robots[robotIdx]->getX(), robots[robotIdx]->getY());
+    Point robotPos = Point(robots[robotIdx].getX(), robots[robotIdx].getY());
     int startIndex = indexify(robotPos);
     Point *delta = Point::fromDirection(moveDir);
 
@@ -135,9 +75,9 @@ Point doMoveAlgorithm() {
                 continue;
             }
 
-            Direction directMoveDirection = robots[i]->getDirectPath(&robotPos);
+            Direction directMoveDirection = robots[i].getDirectPath(&robotPos);
             if (directMoveDirection != Direction::None &&
-                    Point::fromDirection(directMoveDirection)->equals(delta)) {
+                Point::fromDirection(directMoveDirection)->equals(delta)) {
                 collision = true;
                 break;
             }
@@ -165,15 +105,15 @@ Point doMoveAlgorithm() {
         nextPosition = robotPos.add(delta);
 
         // if the robot didn't move then return its current position
-        if (nextPosition.equals(robots[robotIdx])) {
-            return *robots[robotIdx];
+        if (nextPosition.equals(&robots[robotIdx])) {
+            return robots[robotIdx];
         }
 
         // check if move is blocked by fences, edge of board, or other robots
         blocked = isMoveBlocked(robotPos, nextPosition);
         if (!blocked) {
             for (int i = 0; i < NUM_ROBOTS; i++) {
-                if (nextPosition.equals(robots[i])) {
+                if (nextPosition.equals(&robots[i])) {
                     blocked = true;
                     if (i != robotIdx) {
                         isCacheable = false;
@@ -195,7 +135,7 @@ Point doMoveAlgorithm() {
 						outList.length = 0;
 					}
                  */
-                robotPos = *robots[robotIdx];
+                robotPos = robots[robotIdx];
             }
             break;
         }
@@ -235,30 +175,35 @@ Point doMoveAlgorithm() {
     return robotPos;
 }
 
-// calculates the array index of a point on the board
-int indexify(Point robotPosition) {
-    return (robotPosition.getY() * BOARD_SIZE_X) + robotPosition.getX();
+// return the location of the goal
+Point Board::findGoal(Goal targetGoal) {
+    std::vector<Cell *>::iterator cell = cells.begin();
+    for (int i = 0; i < cells.size(); i++) {
+        if ((*cell)->goalEquals(targetGoal)) {
+            return deindexify(i);
+        }
+
+        cell++;
+    }
+
+    return Point(-1, -1);
 }
 
 // determines if a point is inside the board's borders
-bool boardContains(Point point) {
-    return point.getX() >= 0 && point.getX() < BOARD_SIZE_X &&
-            point.getY() >= 0 && point.getY() < BOARD_SIZE_Y;
+bool Board::containsPoint(Point point) {
+    return point.getX() >= 0 && point.getX() < width &&
+           point.getY() >= 0 && point.getY() < height;
 }
 
-Cell *getCell(Point point) {
-    return board[indexify(point)];
-}
-
-bool hasFenceBetween(Point p0, Point p1) {
-    Direction dirTo1 = p1.sub(&p0).getDirection();
-    Direction dirTo0 = p0.sub(&p1).getDirection();
-    Cell *cell0 = getCell(p0);
-    Cell *cell1 = getCell(p1);
+bool Board::hasFenceBetween(Point point0, Point point1) {
+    Direction dirTo1 = point1.sub(&point0).getDirection();
+    Direction dirTo0 = point0.sub(&point1).getDirection();
+    Cell *cell0 = getCell(point0);
+    Cell *cell1 = getCell(point1);
     bool fenceBetween = false;
 
     // are both points inside the playable area
-    if (!(boardContains(p0) || !boardContains(p1))) {
+    if (!(containsPoint(point0) || !containsPoint(point1))) {
         fenceBetween = true;
     }
 
@@ -274,12 +219,47 @@ bool hasFenceBetween(Point p0, Point p1) {
     return fenceBetween;
 }
 
-bool isMoveBlocked(Point p0, Point p1) {
-    return !boardContains(p0) || !boardContains(p1) || hasFenceBetween(p0, p1);
+
+bool Board::isMoveBlocked(Point point0, Point point1) {
+    return !containsPoint(point0) || !containsPoint(point1) || hasFenceBetween(point0, point1);
+}
+
+// calculates the array index of a point on the board
+int Board::indexify(Point point) {
+    return indexify(point.getX(), point.getY());
+}
+
+int Board::indexify(int x, int y) {
+    return y * width + x;
+}
+
+Cell *Board::getCell(int x, int y) {
+    return cells[indexify(x, y)];
+}
+
+Cell *Board::getCell(Point point) {
+    return getCell(point.getX(), point.getY());
+}
+
+Point Board::deindexify(int index) {
+    return Point(index % width, index / height);
+}
+
+std::string Board::toString() {
+    std::string outString;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            outString += getCell(x, y)->toString();
+        }
+        outString += "\n";
+    }
+
+    return outString;
 }
 
 // determines the change in direction when a robot hits a bumper
-Direction getBounceDirection(Direction moveDirection, bool slant) {
+static Direction getBounceDirection(Direction moveDirection, bool slant) {
     if (slant) {
         switch (moveDirection) {
             case Up:

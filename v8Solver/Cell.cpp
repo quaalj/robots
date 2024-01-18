@@ -1,9 +1,44 @@
-#include "cell.h"
+#include "Cell.h"
+#include "nan.h"
+#include "v8.h"
 
 #include <cstdlib>
 #include <cctype>
 #include <string>
 #include <iostream>
+
+using namespace Nan;
+
+Cell::Cell() = default;
+
+Cell::Cell(v8::Local<v8::Object> object) {
+    v8::Local<v8::Array> fencesArg = v8::Local<v8::Array>::Cast(Get(object, Encode("fences", 6, UTF8)).ToLocalChecked());
+    v8::MaybeLocal<v8::Value> goalArg = Get(object, Encode("goal", 4, UTF8));
+    v8::MaybeLocal<v8::Value> bumperArg = Get(object, Encode("bumper", 6, UTF8));
+
+    // read fences
+    for (int i = 0; i < 4; i++) {
+        fences[i] = To<bool>(Get(fencesArg, i).ToLocalChecked()).FromJust();
+    }
+
+    // read goal
+    if (!goalArg.IsEmpty() && !goalArg.ToLocalChecked()->IsNullOrUndefined()) {
+        v8::Local<v8::Object> goalChecked = To<v8::Object>(goalArg.ToLocalChecked()).ToLocalChecked();
+
+        Color goalColor = (Color)To<int>(Get(goalChecked, Encode("color", 5, UTF8)).ToLocalChecked()).FromJust();
+        Symbol goalSymbol = (Symbol)To<int>(Get(goalChecked, Encode("symbol", 6, UTF8)).ToLocalChecked()).FromJust();
+        setGoal(goalColor, goalSymbol);
+    }
+
+    // read bumper
+    if (!bumperArg.IsEmpty() && !bumperArg.ToLocalChecked()->IsNullOrUndefined()) {
+        v8::Local<v8::Object> bumperChecked = To<v8::Object>(bumperArg.ToLocalChecked()).ToLocalChecked();
+
+        Color bumperColor = (Color)To<int>(Get(bumperChecked, Encode("color", 5, UTF8)).ToLocalChecked()).FromJust();
+        bool bumperSlant = To<bool>(Get(bumperChecked, Encode("slant", 5, UTF8)).ToLocalChecked()).FromJust();
+        setBumper(bumperColor, bumperSlant);
+    }
+}
 
 // creates a cell from its two character string representation
 Cell::Cell(char a1, char a2) {
@@ -71,6 +106,10 @@ void Cell::extractFence(char s) {
     }
 }
 
+bool Cell::goalEquals(Goal goal2) {
+    return hasGoal() && goal->symbol == goal2.symbol && goal->color == goal2.color;
+}
+
 std::string Cell::toString() {
     const char BLANK_CHAR = '_';
     char outString[3] = {0};
@@ -136,6 +175,22 @@ Goal *Cell::getGoal() {
     return goal;
 }
 
+void Cell::setBumper(Color color, bool slant) {
+    bumper = new Bumper();
+    bumper->color = color;
+    bumper->slant = slant;
+}
+
+void Cell::setGoal(Color color, Symbol symbol) {
+    goal = new Goal();
+    goal->color = color;
+    goal->symbol = symbol;
+}
+
 bool Cell::getFence(Direction direction) {
     return fences[direction];
+}
+
+Symbol Cell::getSymbol() {
+    return goal->symbol;
 }

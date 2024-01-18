@@ -2,13 +2,7 @@
 #define POINT_H
 
 #include <string>
-
-namespace v8 {
-    class Object;
-
-    template <typename = v8::Object>
-    class Local;
-}
+#include "v8.h"
 
 enum Direction {Left, Up, Right, Down, None};
 

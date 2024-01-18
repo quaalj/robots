@@ -241,13 +241,6 @@ export class RobotState {
 	}
 }
 
-export class SolverRobotState extends RobotState {
-	constructor(robots, warp = false, depth = 0, rejectedDirections = [false, false, false, false]) {
-		super(robots, warp, depth);
-
-		this.rejectedDirections = rejectedDirections;
-	}
-}
 export class RobotMove {
 	constructor(position, direction, color = null) {
 		Object.defineProperty(this, 'position', { 'value': position });
@@ -697,271 +690,6 @@ export class Board {
 		}
 		return robotPos;
 	}
-
-	bakeBoard(numRobots) {
-		this.bakedCells = new Array(this.size.x * this.size.y);
-		let robots = new Array(numRobots);
-
-		for (let x = 0; x < this.size.x; ++x) {
-			for (let y = 0; y < this.size.y; ++y) {
-				let robotMoves = new Array(numRobots);
-
-				for(let robot = 0; robot < numRobots; ++robot) {
-					let moves = new Array(numRobots);
-
-					robots = [];
-					robots[robot] = new Point(x, y);
-
-					for(let dir = 0; dir < 4; ++dir) {
-						let outlist = [];
-						moves[dir] = this.doMove(robots, robot, dir, outlist);
-
-						if(outlist.length > 2) {
-							moves[dir] = undefined;
-						}
-					}
-
-					robotMoves[robot] = moves;
-				}
-
-				this.bakedCells[this.indexify(x, y)] = robotMoves;
-			}
-		}
-	}
-
-	doFastMove(robots, robotIdx, moveDir, outList = null, allowInvalidEndpoint = false) {
-		let blocked = false;
-		let robotPos = robots[robotIdx];
-
-		console.assert(!isNaN(robotPos.x));
-		console.assert(!isNaN(robotPos.y));
-
-		let delta = Point.fromDirection(moveDir);
-
-		console.assert(!isNaN(delta.x));
-		console.assert(!isNaN(delta.y));
-
-		if (outList != null) {
-			outList.length = 0;
-			outList.push(robotPos);
-		}
-
-		/*
-		let targetCell = this.bakedCells[this.indexify(robotPos.x, robotPos.y)];
-
-		if(targetCell !== undefined)
-		{
-			// check to see if are there any other robots in this robot's path
-			// if so, don't look up cached value
-			let result = true;
-			for (let i = 0; i < robots.length; ++i)
-			{
-				if (i == robotIdx)
-				{
-					continue;
-				}
-
-				let subDir = robots[i].sub(robotPos).getDirection();
-				if (subDir !== null && Point.fromDirection(subDir).equals(delta))
-				{
-					result = false;
-					break;
-				}
-			}
-
-			if (result)
-			{
-				let nextPos = this.bakedCells[this.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir];
-
-				if(nextPos !== undefined)
-				{
-					if (outList != null)
-					{
-						outList.push(nextPos);
-					}
-					return nextPos;
-				}
-			}
-		}
-*/
-		while (!blocked) {
-			let nextPos = robotPos.add(delta);
-
-			if (nextPos.equals(robots[robotIdx])) {
-				return robots[robotIdx];
-			}
-
-			blocked = this.isMoveBlocked(robotPos, nextPos);
-			if (!blocked) {
-				for (let i = 0; i < robots.length; ++i) {
-					if (nextPos.equals(robots[i])) {
-						// TODO: maybe implement motion-transfer robots as an optional thing?
-						blocked = true;
-						break;
-					}
-				}
-			}
-
-			if (blocked) {
-				let cell = this.getCell(robotPos);
-				if (cell.bumper != null && !allowInvalidEndpoint) {
-					if (outList != null) {
-						outList.length = 0;
-					}
-					robotPos = robots[robotIdx];
-				}
-				break;
-			}
-
-			console.assert(this.contains(nextPos));
-
-			robotPos = nextPos;
-
-			let cell = this.getCell(robotPos);
-			if (cell.bumper != null && cell.bumper.color != robotIdx) {
-				if (outList != null) {
-					outList.push(robotPos);
-				}
-				moveDir = Direction.bumperSlant(moveDir, cell.bumper.slant);
-				delta = Point.fromDirection(moveDir);
-			}
-		}
-
-		if (outList != null) {
-			if (!(outList.length == 1 && outList[0] == robotPos)) {
-				outList.push(robotPos);
-			}
-		}
-		return robotPos;
-	}
-}
-
-
-function doFastMoveSelfContained(robots, robotIdx, moveDir, outList = null, allowInvalidEndpoint = false, board) {
-	let blocked = false;
-	let robotPos = robots[robotIdx];
-	let isMoveCacheable = true;
-
-	// create new move cache
-	if (cachedCells === undefined) {
-		cachedCells = new Array(board.size.x * board.size.y);
-		for (let x = 0; x < board.size.x; ++x) {
-			for (let y = 0; y < board.size.y; ++y) {
-				let directions = new Array(4);
-				for (let dir = 0; dir < 4; dir++) {
-					directions[dir] = new Array(5);
-				}
-				cachedCells[board.indexify(x, y)] = directions;
-			}
-		}
-	}
-	console.assert(!isNaN(robotPos.x));
-	console.assert(!isNaN(robotPos.y));
-
-	let delta = Point.fromDirection(moveDir);
-
-	console.assert(!isNaN(delta.x));
-	console.assert(!isNaN(delta.y));
-
-	if (outList != null) {
-		outList.length = 0;
-		outList.push(robotPos);
-	}
-
-
-    let targetCell = cachedCells[board.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir];
-    if(targetCell != undefined)
-    {
-        // check to see if are there any other robots in this robot's path
-        // if so, don't look up cached value
-        let result = true;
-        for (let i = 0; i < robots.length; ++i)
-        {
-            if (i == robotIdx)
-            {
-                continue;
-            }
-
-            let subDir = robots[i].sub(robotPos).getDirection();
-            if (subDir !== null && Point.fromDirection(subDir).equals(delta))
-            {
-                result = false;
-                break;
-            }
-        }
-
-        if (result)
-        {
-            let nextPos = cachedCells[board.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir];
-
-            if(nextPos !== undefined)
-            {
-                if (outList != null)
-                {
-                    outList.push(nextPos);
-                }
-                return nextPos;
-            }
-        }
-    }
-
-	while (!blocked) {
-		let nextPos = robotPos.add(delta);
-
-		if (nextPos.equals(robots[robotIdx])) {
-			return robots[robotIdx];
-		}
-
-		blocked = board.isMoveBlocked(robotPos, nextPos);
-		if (!blocked) {
-			for (let i = 0; i < robots.length; ++i) {
-				if (nextPos.equals(robots[i])) {
-					// TODO: maybe implement motion-transfer robots as an optional thing?
-					blocked = true;
-					if (i != robotIdx) {
-						isMoveCacheable = false;
-					}
-					break;
-				}
-			}
-		}
-
-		if (blocked) {
-			let cell = board.getCell(robotPos);
-			if (cell.bumper != null && !allowInvalidEndpoint) {
-				if (outList != null) {
-					outList.length = 0;
-				}
-				robotPos = robots[robotIdx];
-			}
-			break;
-		}
-
-		console.assert(board.contains(nextPos));
-
-		robotPos = nextPos;
-
-		let cell = board.getCell(robotPos);
-		if (cell.bumper != null && cell.bumper.color != robotIdx) {
-			if (outList != null) {
-				outList.push(robotPos);
-			}
-			isMoveCacheable = false;
-			moveDir = Direction.bumperSlant(moveDir, cell.bumper.slant);
-			delta = Point.fromDirection(moveDir);
-		}
-	}
-
-	if (outList != null) {
-		if (!(outList.length == 1 && outList[0] == robotPos)) {
-			outList.push(robotPos);
-		}
-	}
-
-	if (isMoveCacheable && targetCell == undefined) {
-		cachedCells[board.indexify(robotPos.x, robotPos.y)][robotIdx][moveDir] = robotPos;
-	}
-	return robotPos;
 }
 
 export function dumpSolution(board, originalRobots, finalState, stateTree) {
@@ -993,20 +721,10 @@ export function dumpSolution(board, originalRobots, finalState, stateTree) {
 	return moves;
 }
 
-let cachedCells;
-export function solveBoard(board, goal, robots, earlyOut = null, mover = doFastMoveSelfContained, loader = null) {
+export function solveBoard(board, goal, robots, earlyOut = null) {
 	let botCopy = [...robots]
 	let isWarp = goal.symbol == Symbol.Warp;
 	const MAX_MOVE = 25;
-
-	let solverStartTime = Date.now();
-	let rejectedStates = 0;
-
-	cachedCells = undefined;
-
-	if (loader != null) {
-		loader(board.toSolver());
-	}
 
 	let startingState = new RobotState(botCopy, isWarp);
 	let visitedStates = new Map();
@@ -1044,8 +762,6 @@ export function solveBoard(board, goal, robots, earlyOut = null, mover = doFastM
 		return result;
 	}
 
-	let currPriority = 1;
-
 	while (queue.length > 0) {
 		let current = queue.remove();
 		let state = current[1];
@@ -1053,29 +769,9 @@ export function solveBoard(board, goal, robots, earlyOut = null, mover = doFastM
 		console.assert(visitedStates.has(state.toInt()));
 		console.assert(!state.checkGoal(goalPos, goal));
 
-		if (state.depth == currPriority) {
-			console.log(`Depth (${currPriority++}): ${Date.now() - solverStartTime}, ${rejectedStates}/${visitedStates.size} (${rejectedStates/visitedStates.size})`);
-		}
-
 		for (let robot = 0; robot < state.robots.length; ++robot) {
 			for (let dir = 0; dir < 4; ++dir) {
-				//let result = doFastMoveSelfContained(state.robots, robot, dir, null, false,board);
-				//let fasterResult = doFasterMove(state.robots, robot, dir);
-
-				//if (mover !== doFastMoveSelfContained) {
-				//	console.warn(JSON.stringify(state.robots), robot, dir);
-				//}
-				let result = mover(state.robots, robot, dir, null, false, board);
-
-				if (! (result instanceof Point)) {
-					result = new Point(result.x, result.y);
-				}
-
-				//console.assert(result.equals(board.doMove(state.robots, robot, dir)) === true);
-				//if (!result.equals(board.doMove(state.robots, robot, dir)) ) {
-				//	console.log("Sad!");
-				//}
-
+				let result = board.doMove(state.robots, robot, dir, null, false);
 				// No change, don't process
 				if (result.equals(state.robots[robot])) {
 					continue;
@@ -1086,7 +782,6 @@ export function solveBoard(board, goal, robots, earlyOut = null, mover = doFastM
 				let nextState = new RobotState(robotPositions, isWarp, state.depth + 1);
 				// Already processed this state, skipping
 				if (visitedStates.has(nextState.toInt())) {
-					rejectedStates++;
 					continue;
 				}
 				
